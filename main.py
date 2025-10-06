@@ -1,0 +1,305 @@
+"""
+Business AI Advisor - Main API Server
+
+FastAPI-based server that handles requests from Bubble frontend and coordinates 
+with other microservices for AI-powered business analysis.
+"""
+
+import os
+import uuid
+import asyncio
+import json
+from datetime import datetime
+from typing import Dict, List, Optional
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, StreamingResponse
+import structlog
+import redis.asyncio as redis
+from pydantic import BaseModel, Field
+
+# Import our modules
+from models.schemas import AnalysisRequest, AnalysisResponse, JobStatus
+from auth.middleware import get_current_session
+from routes.analysis import router as analysis_router
+from routes.status import router as status_router
+
+# Configure structured logging
+structlog.configure(
+    processors=[
+        structlog.stdlib.filter_by_level,
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.PositionalArgumentsFormatter(),
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+        structlog.processors.UnicodeDecoder(),
+        structlog.processors.JSONRenderer()
+    ],
+    context_class=dict,
+    logger_factory=structlog.stdlib.LoggerFactory(),
+    cache_logger_on_first_use=True,
+)
+
+logger = structlog.get_logger()
+
+# Global variables for connections
+redis_client: Optional[redis.Redis] = None
+websocket_connections: Dict[str, WebSocket] = {}
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifecycle management"""
+    global redis_client
+    
+    # Startup
+    logger.info("Starting API server...")
+    
+    # Initialize Redis connection
+    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+    try:
+        redis_client = redis.from_url(redis_url, decode_responses=True)
+        await redis_client.ping()
+        logger.info("Connected to Redis", redis_url=redis_url)
+    except Exception as e:
+        logger.error("Failed to connect to Redis", error=str(e))
+        redis_client = None
+    
+    yield
+    
+    # Shutdown
+    logger.info("Shutting down API server...")
+    if redis_client:
+        await redis_client.close()
+
+# Create FastAPI app
+app = FastAPI(
+    title="Business AI Advisor API",
+    description="Scalable AI-powered business analysis with real-time streaming",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    lifespan=lifespan
+)
+
+# CORS middleware for Bubble integration
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "https://aibuildd-v1.bubbleapps.io,http://localhost:3000").split(",")
+logger.info("CORS configured", allowed_origins=allowed_origins)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+)
+
+# Include routers
+app.include_router(analysis_router, prefix="/api/v1", tags=["analysis"])
+app.include_router(status_router, prefix="/api/v1", tags=["status"])
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for load balancer and monitoring"""
+    health_status = {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "service": "api-server",
+        "version": "1.0.0"
+    }
+    
+    # Check Redis connection
+    if redis_client:
+        try:
+            await redis_client.ping()
+            health_status["redis"] = "connected"
+        except Exception as e:
+            health_status["redis"] = f"error: {str(e)}"
+            health_status["status"] = "degraded"
+    else:
+        health_status["redis"] = "not_configured"
+        health_status["status"] = "degraded"
+    
+    # Check active WebSocket connections
+    health_status["websocket_connections"] = len(websocket_connections)
+    
+    logger.info("Health check", **health_status)
+    
+    if health_status["status"] == "healthy":
+        return health_status
+    else:
+        raise HTTPException(status_code=503, detail=health_status)
+
+@app.get("/")
+async def root():
+    """Root endpoint with API information"""
+    return {
+        "message": "Business AI Advisor API",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "health": "/health",
+        "websocket": "/ws/{session_id}",
+        "stream": "/stream/{session_id}"  # SSE fallback
+    }
+
+@app.websocket("/ws/{session_id}")
+async def websocket_endpoint(websocket: WebSocket, session_id: str):
+    """
+    WebSocket endpoint for real-time streaming to Bubble frontend.
+    
+    This endpoint maintains a persistent connection with the Bubble app
+    and streams analysis results in real-time as they become available.
+    """
+    # WebSocket CORS: Check Origin header
+    allowed_origins = os.getenv("ALLOWED_ORIGINS", "https://aibuildd-v1.bubbleapps.io").split(",")
+    origin = websocket.headers.get("origin")
+    if origin and origin not in allowed_origins:
+        logger.warning("WebSocket connection blocked by CORS", origin=origin)
+        await websocket.close(code=4403)
+        return
+
+    await websocket.accept()
+    websocket_connections[session_id] = websocket
+
+    logger.info("WebSocket connected", session_id=session_id, origin=origin)
+
+    try:
+        # Send initial connection confirmation
+        await websocket.send_json({
+            "type": "connection",
+            "status": "connected",
+            "session_id": session_id,
+            "timestamp": datetime.utcnow().isoformat()
+        })
+
+        # Keep connection alive and handle incoming messages
+        while True:
+            try:
+                # Wait for messages from client
+                data = await websocket.receive_json()
+
+                # Handle different message types
+                if data.get("type") == "ping":
+                    await websocket.send_json({
+                        "type": "pong",
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+
+                elif data.get("type") == "subscribe":
+                    # Subscribe to job updates
+                    job_id = data.get("job_id")
+                    if job_id and redis_client:
+                        await redis_client.set(f"websocket:{job_id}", session_id)
+                        await websocket.send_json({
+                            "type": "subscribed",
+                            "job_id": job_id
+                        })
+                
+            except WebSocketDisconnect:
+                break
+            except Exception as e:
+                logger.error("WebSocket error", session_id=session_id, error=str(e))
+                await websocket.send_json({
+                    "type": "error",
+                    "message": f"Error: {str(e)}"
+                })
+                
+    except WebSocketDisconnect:
+        pass
+    finally:
+        # Clean up connection
+        if session_id in websocket_connections:
+            del websocket_connections[session_id]
+        logger.info("WebSocket disconnected", session_id=session_id)
+
+@app.get("/stream/{session_id}")
+async def stream_endpoint(session_id: str, request: Request):
+    """
+    Server-Sent Events (SSE) endpoint as WebSocket fallback.
+    
+    This provides streaming capabilities for browsers that have WebSocket CORS issues.
+    """
+    
+    # Check origin for CORS
+    origin = request.headers.get("origin")
+    allowed_origins = os.getenv("ALLOWED_ORIGINS", "https://aibuildd-v1.bubbleapps.io").split(",")
+    
+    async def event_stream():
+        try:
+            # Send initial connection event
+            yield f"data: {json.dumps({'type': 'connection', 'status': 'connected', 'session_id': session_id, 'timestamp': datetime.utcnow().isoformat()})}\n\n"
+            
+            # Keep connection alive and send periodic updates
+            while True:
+                # Check if there are any messages for this session
+                # In a real implementation, you'd check Redis or a message queue
+                
+                # Send heartbeat every 30 seconds
+                await asyncio.sleep(30)
+                yield f"data: {json.dumps({'type': 'heartbeat', 'timestamp': datetime.utcnow().isoformat()})}\n\n"
+                
+        except Exception as e:
+            logger.error("SSE stream error", session_id=session_id, error=str(e))
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+    
+    headers = {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "Access-Control-Allow-Origin": origin if origin in allowed_origins else "*",
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS"
+    }
+    
+    return StreamingResponse(event_stream(), media_type="text/event-stream", headers=headers)
+
+async def send_to_websocket(session_id: str, data: dict):
+    """Send data to a specific WebSocket connection"""
+    if session_id in websocket_connections:
+        try:
+            websocket = websocket_connections[session_id]
+            await websocket.send_json(data)
+            logger.debug("Sent to WebSocket", session_id=session_id, data_type=data.get("type"))
+        except Exception as e:
+            logger.error("Failed to send to WebSocket", session_id=session_id, error=str(e))
+            # Remove broken connection
+            if session_id in websocket_connections:
+                del websocket_connections[session_id]
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request, exc):
+    """Custom HTTP exception handler"""
+    logger.error("HTTP exception", status_code=exc.status_code, detail=exc.detail)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": exc.detail, "timestamp": datetime.utcnow().isoformat()}
+    )
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request, exc):
+    """General exception handler for unexpected errors"""
+    logger.error("Unexpected error", error=str(exc), type=type(exc).__name__)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal server error",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    )
+
+if __name__ == "__main__":
+    import uvicorn
+    
+    port = int(os.getenv("PORT", 8000))
+    host = os.getenv("HOST", "0.0.0.0")
+    
+    uvicorn.run(
+        "main:app",
+        host=host,
+        port=port,
+        reload=True,
+        log_level="info"
+    )

@@ -106,22 +106,29 @@ async def process_analysis(job_id: str):
         job["progress"] = 10
         
         # Send WebSocket update
+        progress_blocks = [{
+            "id": f"progress_{job_id}_1",
+            "type": "paragraph",
+            "data": {
+                "text": f"🔍 Starting analysis for <b>{job['company_name']}</b>...",
+                "alignment": "left"
+            }
+        }]
+        
         await send_job_update(session_id, job_id, {
             "type": "progress",
             "job_id": job_id,
             "stage": "data_collection",
             "content": f"🔍 Starting analysis for {job['company_name']}...",
             "progress": 10,
+            "blocks": progress_blocks,
+            "isContentChunk": True,
+            "chunkNumber": 1,
+            "totalChunks": 4,  # We'll send 4 progress updates + 1 final
+            "complete": False,
             "editor_data": {
                 "time": int(datetime.utcnow().timestamp() * 1000),
-                "blocks": [{
-                    "id": f"progress_{job_id}_1",
-                    "type": "paragraph",
-                    "data": {
-                        "text": f"🔍 Starting analysis for <b>{job['company_name']}</b>...",
-                        "alignment": "left"
-                    }
-                }],
+                "blocks": progress_blocks,
                 "version": "2.30.6"
             }
         })
@@ -130,22 +137,29 @@ async def process_analysis(job_id: str):
         await asyncio.sleep(2)
         job["progress"] = 30
         job["current_stage"] = "competitor_analysis"
+        progress_blocks = [{
+            "id": f"progress_{job_id}_2",
+            "type": "paragraph",
+            "data": {
+                "text": "📊 Analyzing <span style=\"color: rgb(16, 185, 129);\">competitor landscape</span>...",
+                "alignment": "left"
+            }
+        }]
+        
         await send_job_update(session_id, job_id, {
             "type": "progress",
             "job_id": job_id,
             "stage": "competitor_analysis",
             "content": "📊 Analyzing competitor landscape...",
             "progress": 30,
+            "blocks": progress_blocks,
+            "isContentChunk": True,
+            "chunkNumber": 2,
+            "totalChunks": 4,
+            "complete": False,
             "editor_data": {
                 "time": int(datetime.utcnow().timestamp() * 1000),
-                "blocks": [{
-                    "id": f"progress_{job_id}_2",
-                    "type": "paragraph",
-                    "data": {
-                        "text": "📊 Analyzing <span style=\"color: rgb(16, 185, 129);\">competitor landscape</span>...",
-                        "alignment": "left"
-                    }
-                }],
+                "blocks": progress_blocks,
                 "version": "2.30.6"
             }
         })
@@ -154,22 +168,29 @@ async def process_analysis(job_id: str):
         await asyncio.sleep(3)
         job["progress"] = 60
         job["current_stage"] = "market_trends"
+        progress_blocks = [{
+            "id": f"progress_{job_id}_3",
+            "type": "paragraph",
+            "data": {
+                "text": "📈 Examining <b>market trends</b> and opportunities...",
+                "alignment": "left"
+            }
+        }]
+        
         await send_job_update(session_id, job_id, {
             "type": "progress",
             "job_id": job_id,
             "stage": "market_trends",
             "content": "📈 Examining market trends and opportunities...",
             "progress": 60,
+            "blocks": progress_blocks,
+            "isContentChunk": True,
+            "chunkNumber": 3,
+            "totalChunks": 4,
+            "complete": False,
             "editor_data": {
                 "time": int(datetime.utcnow().timestamp() * 1000),
-                "blocks": [{
-                    "id": f"progress_{job_id}_3",
-                    "type": "paragraph",
-                    "data": {
-                        "text": "📈 Examining <b>market trends</b> and opportunities...",
-                        "alignment": "left"
-                    }
-                }],
+                "blocks": progress_blocks,
                 "version": "2.30.6"
             }
         })
@@ -178,22 +199,29 @@ async def process_analysis(job_id: str):
         await asyncio.sleep(2)
         job["progress"] = 80
         job["current_stage"] = "synthesis"
+        progress_blocks = [{
+            "id": f"progress_{job_id}_4",
+            "type": "paragraph",
+            "data": {
+                "text": "🧠 Synthesizing <i>insights</i> and <b>recommendations</b>...",
+                "alignment": "left"
+            }
+        }]
+        
         await send_job_update(session_id, job_id, {
             "type": "progress",
             "job_id": job_id,
             "stage": "synthesis",
             "content": "🧠 Synthesizing insights and recommendations...",
             "progress": 80,
+            "blocks": progress_blocks,
+            "isContentChunk": True,
+            "chunkNumber": 4,
+            "totalChunks": 4,
+            "complete": False,
             "editor_data": {
                 "time": int(datetime.utcnow().timestamp() * 1000),
-                "blocks": [{
-                    "id": f"progress_{job_id}_4",
-                    "type": "paragraph",
-                    "data": {
-                        "text": "🧠 Synthesizing <i>insights</i> and <b>recommendations</b>...",
-                        "alignment": "left"
-                    }
-                }],
+                "blocks": progress_blocks,
                 "version": "2.30.6"
             }
         })
@@ -218,7 +246,12 @@ async def process_analysis(job_id: str):
             "content": "✅ Analysis completed successfully!",
             "progress": 100,
             "results": mock_results,
-            "editor_data": mock_results["editor_data"]  # Include Editor.js formatted data
+            "blocks": mock_results["editor_data"]["blocks"],  # Send blocks for Editor.js animation
+            "editor_data": mock_results["editor_data"],  # Keep for compatibility
+            "isContentChunk": True,  # Mark as content chunk for processing
+            "chunkNumber": 5,  # Final chunk after 4 progress updates
+            "totalChunks": 5,  # 4 progress + 1 final
+            "complete": True  # Mark as complete
         })
         
         logger.info("Analysis completed", job_id=job_id, company_name=job['company_name'])

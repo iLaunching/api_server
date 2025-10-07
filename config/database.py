@@ -18,26 +18,34 @@ logger = structlog.get_logger()
 
 # Database configuration
 DATABASE_URL = os.getenv("DATABASE_URL")
-if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
+if DATABASE_URL:
+    # Convert postgres:// to postgresql+asyncpg:// for asyncpg driver
+    if DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif DATABASE_URL.startswith("postgresql://") and "+asyncpg" not in DATABASE_URL:
+        DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 
-# SQLAlchemy setup
-engine = create_async_engine(
-    DATABASE_URL,
-    echo=os.getenv("DATABASE_ECHO", "false").lower() == "true",
-    pool_size=20,
-    max_overflow=0,
-    pool_pre_ping=True,
-    pool_recycle=300
-)
+# SQLAlchemy setup - only create engine if DATABASE_URL is available
+engine = None
+async_session_maker = None
 
-async_session_maker = async_sessionmaker(
-    engine,
-    class_=AsyncSession,
-    expire_on_commit=False
-)
+if DATABASE_URL:
+    engine = create_async_engine(
+        DATABASE_URL,
+        echo=os.getenv("DATABASE_ECHO", "false").lower() == "true",
+        pool_size=20,
+        max_overflow=0,
+        pool_pre_ping=True,
+        pool_recycle=300
+    )
+
+    async_session_maker = async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=False
+    )
 
 Base = declarative_base()
 
@@ -78,6 +86,9 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     Yields:
         AsyncSession: Database session
     """
+    if not async_session_maker:
+        raise Exception("Database not initialized - async_session_maker is None")
+        
     async with async_session_maker() as session:
         try:
             yield session
@@ -86,6 +97,9 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 async def init_database():
     """Initialize database connection and create tables."""
+    if not DATABASE_URL or not engine:
+        raise Exception("DATABASE_URL not configured or engine not initialized")
+        
     try:
         # Test database connection
         async with engine.begin() as conn:
@@ -97,10 +111,10 @@ async def init_database():
             # Create all tables
             await conn.run_sync(Base.metadata.create_all)
             
-        logger.info("Database connection established", url=DATABASE_URL)
+        logger.info("Database connection established", url=DATABASE_URL[:50] + "...")
         
     except Exception as e:
-        logger.error("Failed to connect to database", error=str(e), url=DATABASE_URL)
+        logger.error("Failed to connect to database", error=str(e), url=DATABASE_URL[:50] + "..." if DATABASE_URL else None)
         raise
 
 async def close_database():
@@ -115,17 +129,25 @@ async def close_database():
         logger.error("Error closing Redis connection", error=str(e))
     
     try:
-        await engine.dispose()
-        logger.info("Database connection closed")
+        if engine:
+            await engine.dispose()
+            logger.info("Database connection closed")
     except Exception as e:
         logger.error("Error closing database connection", error=str(e))
 
 # Health check functions
 async def check_database_health() -> dict:
     """Check database connectivity."""
+    if not async_session_maker:
+        return {
+            "status": "not_configured",
+            "message": "Database not configured - missing DATABASE_URL"
+        }
+        
     try:
         async with async_session_maker() as session:
-            result = await session.execute("SELECT 1")
+            from sqlalchemy import text
+            result = await session.execute(text("SELECT 1"))
             return {
                 "status": "healthy",
                 "message": "Database connection successful"

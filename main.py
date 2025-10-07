@@ -25,6 +25,7 @@ from models.schemas import AnalysisRequest, AnalysisResponse, JobStatus
 from auth.middleware import get_current_session
 from routes.analysis import router as analysis_router
 from routes.status import router as status_router
+from config.database import init_database, init_redis, close_database, check_database_health, check_redis_health
 
 # Configure structured logging
 structlog.configure(
@@ -58,22 +59,28 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting API server...")
     
-    # Initialize Redis connection
-    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+    # Initialize Database
     try:
-        redis_client = redis.from_url(redis_url, decode_responses=True)
-        await redis_client.ping()
-        logger.info("Connected to Redis", redis_url=redis_url)
+        await init_database()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.error("Failed to initialize database", error=str(e))
+        # Don't fail startup - continue without database for development
+    
+    # Initialize Redis connection
+    try:
+        redis_client = await init_redis()
+        logger.info("Redis initialized successfully")
     except Exception as e:
         logger.error("Failed to connect to Redis", error=str(e))
         redis_client = None
+        # Don't fail startup - continue without Redis for development
     
     yield
     
     # Shutdown
     logger.info("Shutting down API server...")
-    if redis_client:
-        await redis_client.close()
+    await close_database()
 
 # Create FastAPI app
 app = FastAPI(
@@ -111,16 +118,16 @@ async def health_check():
         "version": "1.0.0"
     }
     
-    # Check Redis connection
-    if redis_client:
-        try:
-            await redis_client.ping()
-            health_status["redis"] = "connected"
-        except Exception as e:
-            health_status["redis"] = f"error: {str(e)}"
-            health_status["status"] = "degraded"
-    else:
-        health_status["redis"] = "not_configured"
+    # Check Database connection
+    db_health = await check_database_health()
+    health_status["database"] = db_health
+    if db_health["status"] != "healthy":
+        health_status["status"] = "degraded"
+    
+    # Check Redis connection  
+    redis_health = await check_redis_health()
+    health_status["redis"] = redis_health
+    if redis_health["status"] != "healthy":
         health_status["status"] = "degraded"
     
     # Check active WebSocket connections

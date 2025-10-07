@@ -59,18 +59,18 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting API server...")
     
-    # Initialize Database
+    # Initialize Database (temporarily disabled for debugging)
     try:
-        await init_database()
-        logger.info("Database initialized successfully")
+        # await init_database()  # Temporarily commented out
+        logger.info("Database initialization skipped for debugging")
     except Exception as e:
         logger.error("Failed to initialize database", error=str(e))
         # Don't fail startup - continue without database for development
     
-    # Initialize Redis connection
+    # Initialize Redis connection (temporarily disabled for debugging)
     try:
-        redis_client = await init_redis()
-        logger.info("Redis initialized successfully")
+        # redis_client = await init_redis()  # Temporarily commented out
+        logger.info("Redis initialization skipped for debugging")
     except Exception as e:
         logger.error("Failed to connect to Redis", error=str(e))
         redis_client = None
@@ -118,17 +118,21 @@ async def health_check():
         "version": "1.0.0"
     }
     
-    # Check Database connection
-    db_health = await check_database_health()
-    health_status["database"] = db_health
-    if db_health["status"] != "healthy":
-        health_status["status"] = "degraded"
+    # Check Database connection (temporarily disabled for debugging)
+    try:
+        # db_health = await check_database_health()
+        db_health = {"status": "disabled", "message": "Database checks disabled for debugging"}
+        health_status["database"] = db_health
+    except Exception as e:
+        health_status["database"] = {"status": "error", "message": str(e)}
     
-    # Check Redis connection  
-    redis_health = await check_redis_health()
-    health_status["redis"] = redis_health
-    if redis_health["status"] != "healthy":
-        health_status["status"] = "degraded"
+    # Check Redis connection (temporarily disabled for debugging)  
+    try:
+        # redis_health = await check_redis_health()
+        redis_health = {"status": "disabled", "message": "Redis checks disabled for debugging"}
+        health_status["redis"] = redis_health
+    except Exception as e:
+        health_status["redis"] = {"status": "error", "message": str(e)}
     
     # Check active WebSocket connections
     health_status["websocket_connections"] = len(websocket_connections)

@@ -90,7 +90,9 @@ async def init_database():
         # Test database connection
         async with engine.begin() as conn:
             # Import models to register them with Base
-            from models.database_models import *
+            from models.database_models import (
+                AnalysisJob, AnalysisResult, DataCache, LLMUsage, WorkerHealth
+            )
             
             # Create all tables
             await conn.run_sync(Base.metadata.create_all)

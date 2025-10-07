@@ -30,7 +30,7 @@ class AnalysisJob(Base):
     updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
     completed_at = Column(DateTime(timezone=True))
     user_session = Column(String(255))
-    metadata = Column(JSONB, default={})
+    job_metadata = Column(JSONB, default={})
     progress = Column(Integer, default=0)
     error_message = Column(Text)
     
@@ -50,7 +50,7 @@ class AnalysisJob(Base):
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "user_session": self.user_session,
-            "metadata": self.metadata,
+            "metadata": self.job_metadata,
             "progress": self.progress,
             "error_message": self.error_message
         }
@@ -225,7 +225,7 @@ class WorkerHealth(Base):
     tasks_completed = Column(Integer, default=0)
     tasks_failed = Column(Integer, default=0)
     avg_processing_time_ms = Column(Integer)
-    metadata = Column(JSONB, default={})
+    worker_metadata = Column(JSONB, default={})
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -237,7 +237,7 @@ class WorkerHealth(Base):
             "tasks_completed": self.tasks_completed,
             "tasks_failed": self.tasks_failed,
             "avg_processing_time_ms": self.avg_processing_time_ms,
-            "metadata": self.metadata
+            "metadata": self.worker_metadata
         }
 
     @classmethod
@@ -251,13 +251,13 @@ class WorkerHealth(Base):
         if worker:
             worker.status = status
             worker.last_heartbeat = func.now()
-            worker.metadata = {**worker.metadata, **metadata}
+            worker.worker_metadata = {**worker.worker_metadata, **metadata}
         else:
             worker = cls(
                 worker_id=worker_id,
                 worker_type=worker_type,
                 status=status,
-                metadata=metadata
+                worker_metadata=metadata
             )
             db.add(worker)
         

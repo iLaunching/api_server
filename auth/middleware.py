@@ -15,46 +15,21 @@ logger = structlog.get_logger()
 # Simple session-based auth for now (can be enhanced with JWT later)
 security = HTTPBearer(auto_error=False)
 
-async def get_current_session(
-    request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
-) -> str:
-    """
-    Get or create a session ID for the current request.
+async def get_current_session(token: str = Depends(security)) -> str:
+    """Extract and validate session ID from Bearer token"""
     
-    For now, we use a simple session-based approach that's compatible
-    with Bubble's plugin system. Can be enhanced with JWT tokens later.
-    """
+    # Remove 'Bearer ' prefix if present
+    session_id = token.replace("Bearer ", "") if token.startswith("Bearer ") else token
     
-    # Try to get session from Authorization header
-    session_id = None
-    if credentials:
-        session_id = credentials.credentials
-        
-    # Try to get session from custom header (Bubble compatibility)
-    if not session_id:
-        session_id = request.headers.get("X-Session-ID")
-    
-    # Try to get session from query parameter
-    if not session_id:
-        session_id = request.query_params.get("session_id")
-    
-    # Generate new session if none provided
-    if not session_id:
-        session_id = str(uuid.uuid4())
-        logger.info("Generated new session", session_id=session_id)
-    
-    # Validate session format
+    # Validate UUID format for session ID
     try:
         uuid.UUID(session_id)
     except ValueError:
         raise HTTPException(
             status_code=401,
-            detail="Invalid session ID format"
+            detail="Invalid session ID format",
+            headers={"WWW-Authenticate": "Bearer"},
         )
-    
-    # Log session activity
-    logger.debug("Session authenticated", session_id=session_id)
     
     return session_id
 

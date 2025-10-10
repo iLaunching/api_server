@@ -19,4 +19,4 @@ FastAPI-based API server that handles requests from Bubble frontend and coordina
 - `DATABASE_URL` - PostgreSQL connection string
 - `REDIS_URL` - Redis connection string
 - `AI_ORCHESTRATOR_URL` - Main AI service URL
-- `PORT` - Server port (default: 8000)
+- `PORT` - Server port (default: 8000)# Railway deployment trigger Fri Oct 10 16:25:01 UTC 2025

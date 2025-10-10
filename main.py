@@ -212,6 +212,8 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                             "type": "subscribed",
                             "job_id": job_id
                         })
+
+
                 
             except WebSocketDisconnect:
                 break

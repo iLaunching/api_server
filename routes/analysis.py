@@ -5,7 +5,7 @@ Analysis endpoints for business AI analysis requests.
 import uuid
 import asyncio
 from datetime import datetime, timedelta
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 import structlog
 
@@ -27,7 +27,7 @@ active_jobs: Dict[str, Dict[str, Any]] = {}
 async def start_analysis(
     request: AnalysisRequest,
     background_tasks: BackgroundTasks,
-    session_id: str = Depends(get_current_session)
+    session_id: Optional[str] = None
 ):
     """
     Start a new business analysis.
@@ -39,6 +39,10 @@ async def start_analysis(
     
     # Generate unique job ID
     job_id = str(uuid.uuid4())
+    
+    # Generate session_id if not provided (for Editor compatibility)
+    if not session_id:
+        session_id = str(uuid.uuid4())
     
     # Create job record
     job_data = {

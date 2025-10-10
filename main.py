@@ -86,7 +86,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Business AI Advisor API",
     description="Scalable AI-powered business analysis with real-time streaming",
-    version="1.0.1",
+    version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan
@@ -212,8 +212,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                             "type": "subscribed",
                             "job_id": job_id
                         })
-
-
                 
             except WebSocketDisconnect:
                 break

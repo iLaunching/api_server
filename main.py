@@ -155,12 +155,41 @@ async def root():
     """Root endpoint with API information"""
     return {
         "message": "Business AI Advisor API",
-        "version": "1.0.0",
+        "version": "1.0.1",
         "docs": "/docs",
         "health": "/health",
         "websocket": "/ws/{session_id}",
         "stream": "/stream/{session_id}"  # SSE fallback
     }
+
+@app.post("/")
+async def handle_query(request: Request):
+    """Handle POST queries from Editor - Quick mock response for testing"""
+    try:
+        body = await request.json()
+        message = body.get("message", "No message")
+        
+        # Simple mock response
+        mock_response = {
+            "status": "success",
+            "response": f"✅ Connected! I received your message: '{message}'. This is mock data from the API server. The connection is working perfectly!",
+            "timestamp": datetime.utcnow().isoformat(),
+            "server": "Business AI Advisor API v1.0.1",
+            "mock": True,
+            "message_length": len(message)
+        }
+        
+        logger.info("Query received", message=message[:100])
+        return mock_response
+        
+    except Exception as e:
+        logger.error("Query failed", error=str(e))
+        return {
+            "status": "error", 
+            "response": f"Connection successful but query failed: {str(e)}",
+            "timestamp": datetime.utcnow().isoformat(),
+            "mock": True
+        }
 
 @app.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):

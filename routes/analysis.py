@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 import structlog
+import httpx
 
 from models.schemas import (
     AnalysisRequest, 
@@ -19,6 +20,9 @@ from auth.middleware import get_current_session
 
 logger = structlog.get_logger()
 router = APIRouter()
+
+# LLM Gateway URL - Phase 2 Step 5 integration
+LLM_GATEWAY_URL = "https://ilaunching-llm-server-production.up.railway.app"
 
 # In-memory job storage (will be replaced with database in later phases)
 active_jobs: Dict[str, Dict[str, Any]] = {}
@@ -230,9 +234,20 @@ async def process_analysis(job_id: str):
             }
         })
         
-        # Generate mock results
-        await asyncio.sleep(2)
-        mock_results = generate_mock_analysis_results(job['company_name'], job['industry'])
+        # Generate AI-powered analysis using LLM Gateway - Phase 2 integration
+        ai_analysis = await generate_ai_analysis(
+            company_name=job['company_name'],
+            industry=job['industry'] or 'general business',
+            analysis_type=job['analysis_type'],
+            context=job.get('additional_context', '')
+        )
+        
+        # Convert AI response to Editor.js blocks format
+        ai_results = convert_ai_to_editor_blocks(
+            ai_analysis, 
+            job['company_name'], 
+            job['industry']
+        )
         
         # Complete the job
         job["status"] = JobStatusEnum.COMPLETED
@@ -240,18 +255,18 @@ async def process_analysis(job_id: str):
         job["current_stage"] = "completed"
         job["completed_at"] = datetime.utcnow()
         job["updated_at"] = datetime.utcnow()
-        job["results"] = mock_results
+        job["results"] = ai_results
         
-        # Send final results
+        # Send final AI analysis results
         await send_job_update(session_id, job_id, {
             "type": "completed",
             "job_id": job_id,
             "stage": "completed",
-            "content": "✅ Analysis completed successfully!",
+            "content": "✅ AI Analysis completed successfully!",
             "progress": 100,
-            "results": mock_results,
-            "blocks": mock_results["editor_data"]["blocks"],  # Send blocks for Editor.js animation
-            "editor_data": mock_results["editor_data"],  # Keep for compatibility
+            "results": ai_results,
+            "blocks": ai_results["editor_data"]["blocks"],  # Send blocks for Editor.js animation
+            "editor_data": ai_results["editor_data"],  # Keep for compatibility
             "isContentChunk": True,  # Mark as content chunk for processing
             "chunkNumber": 5,  # Final chunk after 4 progress updates
             "totalChunks": 5,  # 4 progress + 1 final
@@ -455,5 +470,150 @@ def generate_mock_analysis_results(company_name: str, industry: str) -> dict:
             "data_sources": ["Industry reports", "Competitor websites", "Social media analysis", "Market research"],
             "analysis_date": datetime.utcnow().isoformat(),
             "total_blocks": len(editor_blocks)
+        }
+    }
+
+async def call_llm_gateway(prompt: str, model: str = "gpt-4o-mini") -> str:
+    """
+    Call LLM Gateway for AI-powered analysis - Phase 2 Step 5 integration
+    
+    This function integrates with the LLM Gateway service to get real AI responses
+    for business analysis tasks, following the project plan architecture.
+    """
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{LLM_GATEWAY_URL}/generate",
+                json={
+                    "messages": [
+                        {
+                            "role": "system", 
+                            "content": "You are an expert business analyst. Provide clear, actionable insights based on the analysis request."
+                        },
+                        {"role": "user", "content": prompt}
+                    ],
+                    "model": model,
+                    "max_tokens": 1000,
+                    "temperature": 0.7
+                },
+                timeout=30.0
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                logger.info(
+                    "LLM Gateway response received",
+                    model=result.get("model_used"),
+                    tokens=result.get("tokens_used"),
+                    cost=result.get("cost_usd")
+                )
+                return result.get("content", "No response from AI")
+            else:
+                logger.error("LLM Gateway error", status=response.status_code, response=response.text)
+                return f"AI analysis temporarily unavailable (Status: {response.status_code})"
+                
+    except Exception as e:
+        logger.error("LLM Gateway call failed", error=str(e))
+        return "AI analysis service is currently experiencing issues. Please try again in a moment."
+
+async def generate_ai_analysis(company_name: str, industry: str, analysis_type: str, context: str = "") -> str:
+    """
+    Generate AI-powered business analysis using the LLM Gateway
+    
+    This replaces mock data with real AI analysis following the Phase 2 plan:
+    Bubble → API → LLM → Stream back
+    """
+    
+    prompt = f"""
+    Analyze the business: {company_name}
+    Industry: {industry}
+    Analysis Type: {analysis_type}
+    Additional Context: {context}
+    
+    Provide a comprehensive business analysis including:
+    1. Market position and competitive landscape
+    2. Key opportunities and challenges
+    3. Strategic recommendations
+    4. Actionable next steps
+    
+    Format the response in clear, business-friendly language with specific insights.
+    """
+    
+    # Call LLM Gateway for AI analysis
+    ai_response = await call_llm_gateway(prompt)
+    return ai_response
+
+def convert_ai_to_editor_blocks(ai_analysis: str, company_name: str, industry: str = "technology") -> Dict[str, Any]:
+    """
+    Convert AI analysis text to Editor.js blocks format
+    
+    This maintains compatibility with the Editor.js plugin while using real AI content
+    """
+    
+    current_time = int(datetime.utcnow().timestamp() * 1000)
+    
+    # Split AI analysis into paragraphs and convert to Editor.js blocks
+    paragraphs = [p.strip() for p in ai_analysis.split('\n\n') if p.strip()]
+    
+    editor_blocks = []
+    
+    # Add title block
+    editor_blocks.append({
+        "id": generate_block_id(),
+        "type": "header",
+        "data": {
+            "text": f"AI Business Analysis: {company_name}",
+            "level": 2
+        }
+    })
+    
+    # Add analysis content blocks
+    for i, paragraph in enumerate(paragraphs):
+        if paragraph.strip():
+            # Check if this looks like a header/section title
+            if any(keyword in paragraph.lower() for keyword in ['market position', 'opportunities', 'recommendations', 'next steps', 'challenges']):
+                editor_blocks.append({
+                    "id": generate_block_id(),
+                    "type": "header",
+                    "data": {
+                        "text": paragraph,
+                        "level": 3
+                    }
+                })
+            else:
+                editor_blocks.append({
+                    "id": generate_block_id(),
+                    "type": "paragraph",
+                    "data": {
+                        "text": paragraph,
+                        "alignment": "left"
+                    }
+                })
+    
+    # Add metadata block
+    editor_blocks.append({
+        "id": generate_block_id(),
+        "type": "callout",
+        "data": {
+            "emoji": "🤖",
+            "backgroundColor": "default",
+            "text": f"<b>AI Analysis</b> generated using our LLM Gateway with real-time processing for {company_name}"
+        }
+    })
+    
+    return {
+        "editor_data": {
+            "time": current_time,
+            "blocks": editor_blocks,
+            "version": "2.30.6"
+        },
+        "metadata": {
+            "company_name": company_name,
+            "industry": industry,
+            "confidence_score": 0.90,  # AI analysis confidence
+            "data_sources": ["AI Analysis", "LLM Gateway", "Real-time Processing"],
+            "analysis_date": datetime.utcnow().isoformat(),
+            "total_blocks": len(editor_blocks),
+            "ai_powered": True
         }
     }

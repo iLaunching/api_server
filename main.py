@@ -25,7 +25,6 @@ from models.schemas import AnalysisRequest, AnalysisResponse, JobStatus
 from auth.middleware import get_current_session
 from routes.analysis import router as analysis_router
 from routes.status import router as status_router
-from routes.chat import router as chat_router
 from config.database import init_database, init_redis, close_database, check_database_health, check_redis_health
 
 # Configure structured logging
@@ -105,10 +104,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
+# Include routers - Phase 2 Plan: Analysis + Status + WebSocket streaming
 app.include_router(analysis_router, prefix="/api/v1", tags=["analysis"])
 app.include_router(status_router, prefix="/api/v1", tags=["status"])
-app.include_router(chat_router, prefix="/api/v1", tags=["chat"])
 
 @app.get("/health")
 async def health_check():

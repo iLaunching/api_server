@@ -15,11 +15,17 @@ logger = structlog.get_logger()
 # Simple session-based auth for now (can be enhanced with JWT later)
 security = HTTPBearer(auto_error=False)
 
-async def get_current_session(token: str = Depends(security)) -> str:
+async def get_current_session(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> str:
     """Extract and validate session ID from Bearer token"""
     
-    # Remove 'Bearer ' prefix if present
-    session_id = token.replace("Bearer ", "") if token.startswith("Bearer ") else token
+    if not credentials:
+        raise HTTPException(
+            status_code=401,
+            detail="Missing authorization token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    session_id = credentials.credentials
     
     # Validate UUID format for session ID
     try:

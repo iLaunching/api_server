@@ -4,6 +4,8 @@ Analysis endpoints for business AI analysis requests.
 
 import uuid
 import asyncio
+import random
+import string
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
@@ -21,6 +23,11 @@ from auth.middleware import get_current_session
 logger = structlog.get_logger()
 router = APIRouter()
 
+# Utility function for Editor.js block IDs
+def generate_block_id():
+    """Generate unique block ID for Editor.js format"""
+    return ''.join(random.choices(string.ascii_letters + string.digits, k=10))
+
 # LLM Gateway URL - Phase 2 Step 5 integration
 LLM_GATEWAY_URL = "https://ilaunching-llm-server-production.up.railway.app"
 
@@ -31,7 +38,7 @@ active_jobs: Dict[str, Dict[str, Any]] = {}
 async def start_analysis(
     request: AnalysisRequest,
     background_tasks: BackgroundTasks,
-    session_id: Optional[str] = None
+    session_id: str = Depends(get_current_session)
 ):
     """
     Start a new business analysis.
@@ -43,10 +50,6 @@ async def start_analysis(
     
     # Generate unique job ID
     job_id = str(uuid.uuid4())
-    
-    # Generate session_id if not provided (for Editor compatibility)
-    if not session_id:
-        session_id = str(uuid.uuid4())
     
     # Create job record
     job_data = {
@@ -304,12 +307,7 @@ def generate_mock_analysis_results(company_name: str, industry: str) -> dict:
     industry_display = industry.title() if industry else "Technology"
     current_time = int(datetime.utcnow().timestamp() * 1000)  # Editor.js timestamp format
     
-    # Generate unique block IDs
-    import random
-    import string
-    
-    def generate_block_id():
-        return ''.join(random.choices(string.ascii_letters + string.digits, k=10))
+    # Generate unique block IDs (function now defined at module level)
     
     # Create Editor.js formatted blocks
     editor_blocks = [

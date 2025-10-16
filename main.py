@@ -115,7 +115,9 @@ async def health_check():
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
         "service": "api-server",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "instance_id": os.getenv("INSTANCE_ID", "main"),
+        "load_balancer_ready": True
     }
     
     # Check Database connection

@@ -3,6 +3,8 @@ Business AI Advisor - Main API Server
 
 FastAPI-based server that handles requests from Bubble frontend and coordinates 
 with other microservices for AI-powered business analysis.
+
+AUTH ROUTES TEST - Version 1.0.2
 """
 
 import os
@@ -87,7 +89,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Business AI Advisor API",
     description="Scalable AI-powered business analysis with real-time streaming",
-    version="1.0.1",
+    version="1.0.2",
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan

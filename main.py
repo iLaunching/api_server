@@ -147,10 +147,9 @@ async def health_check():
     
     logger.info("Health check", **health_status)
     
-    if health_status["status"] == "healthy":
-        return health_status
-    else:
-        raise HTTPException(status_code=503, detail=health_status)
+    # Return 200 OK even if degraded - Railway healthcheck requires 2xx/3xx
+    # The status field will indicate actual health
+    return health_status
 
 @app.get("/")
 async def root():

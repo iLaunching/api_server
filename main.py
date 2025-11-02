@@ -93,8 +93,13 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS middleware for Bubble integration
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "https://aibuildd-v1.bubbleapps.io,http://localhost:3000").split(",")
+# CORS middleware - allow frontend access
+allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "*")
+if allowed_origins_str == "*":
+    allowed_origins = ["*"]
+else:
+    allowed_origins = [origin.strip() for origin in allowed_origins_str.split(",")]
+
 logger.info("CORS configured", allowed_origins=allowed_origins)
 
 app.add_middleware(

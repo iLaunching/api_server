@@ -89,7 +89,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Business AI Advisor API",
     description="Scalable AI-powered business analysis with real-time streaming",
-    version="1.0.2",
+    version="1.0.3-auth-enabled",
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan

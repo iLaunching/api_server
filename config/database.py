@@ -103,10 +103,18 @@ async def init_database():
     try:
         # Test database connection
         async with engine.begin() as conn:
-            # Import models to register them with Base
-            from models.database_models import (
-                AnalysisJob, AnalysisResult, DataCache, LLMUsage, WorkerHealth
-            )
+            # Import auth models to register them with Base
+            try:
+                from models.user import User, Session, UserProfile, LoginAttempt, PasswordResetToken, EmailVerificationToken
+            except ImportError:
+                logger.warning("Could not import user models, skipping table creation")
+            
+            try:
+                from models.database_models import (
+                    AnalysisJob, AnalysisResult, DataCache, LLMUsage, WorkerHealth
+                )
+            except ImportError:
+                logger.warning("Could not import database_models (analysis models), skipping")
             
             # Create all tables
             await conn.run_sync(Base.metadata.create_all)

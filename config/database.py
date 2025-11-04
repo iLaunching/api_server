@@ -98,7 +98,8 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 async def init_database():
     """Initialize database connection and create tables."""
     if not DATABASE_URL or not engine:
-        raise Exception("DATABASE_URL not configured or engine not initialized")
+        logger.warning("DATABASE_URL not configured - skipping database initialization")
+        return
         
     try:
         # Test database connection

@@ -28,6 +28,7 @@ from auth.middleware import get_current_session
 from routes.analysis import router as analysis_router
 from routes.status import router as status_router
 from routes.auth_routes import router as auth_router
+from routes.streaming import router as streaming_router
 from config.database import init_database, init_redis, close_database, check_database_health, check_redis_health
 
 # Configure structured logging
@@ -116,6 +117,7 @@ app.add_middleware(
 app.include_router(analysis_router, prefix="/api/v1", tags=["analysis"])
 app.include_router(status_router, prefix="/api/v1", tags=["status"])
 app.include_router(auth_router, prefix="/api/v1", tags=["authentication"])
+app.include_router(streaming_router, prefix="/api/v1", tags=["streaming"])
 
 @app.get("/health")
 async def health_check():

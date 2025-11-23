@@ -29,6 +29,8 @@ from routes.analysis import router as analysis_router
 from routes.status import router as status_router
 from routes.auth_routes import router as auth_router
 from routes.streaming import router as streaming_router
+from routes.appearance import router as appearance_router
+from services.appearance_cache import appearance_cache
 from config.database import init_database, init_redis, close_database, check_database_health, check_redis_health
 
 # Configure structured logging
@@ -80,6 +82,14 @@ async def lifespan(app: FastAPI):
         redis_client = None
         # Don't fail startup - continue without Redis for development
     
+    # Initialize Appearance Cache
+    try:
+        await appearance_cache.load_cache()
+        logger.info("Appearance cache initialized successfully")
+    except Exception as e:
+        logger.error("Failed to initialize appearance cache", error=str(e))
+        # Don't fail startup - continue without cache for development
+    
     yield
     
     # Shutdown
@@ -113,11 +123,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers - Phase 2 Plan: Analysis + Status + WebSocket streaming + Auth
+# Include routers - Phase 2 Plan: Analysis + Status + WebSocket streaming + Auth + Appearance
 app.include_router(analysis_router, prefix="/api/v1", tags=["analysis"])
 app.include_router(status_router, prefix="/api/v1", tags=["status"])
 app.include_router(auth_router, prefix="/api/v1", tags=["authentication"])
 app.include_router(streaming_router, prefix="/api/v1", tags=["streaming"])
+app.include_router(appearance_router, prefix="/api/v1", tags=["appearance"])
 
 @app.get("/health")
 async def health_check():

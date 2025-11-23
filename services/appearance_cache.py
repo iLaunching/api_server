@@ -38,11 +38,10 @@ class AppearanceCache:
                         tc.id as theme_config_id,
                         tc.name as theme_name,
                         tc.text_color,
-                        tc.button_color,
                         tc.background_color,
                         tc.menu_color,
                         tc.border_line_color,
-                        tc.metadata
+                        tc.theme_metadata as metadata
                     FROM option_sets os
                     JOIN option_values ov ON os.id = ov.option_set_id
                     LEFT JOIN theme_configs tc ON ov.id = tc.option_value_id
@@ -65,7 +64,6 @@ class AppearanceCache:
                         'theme_config_id': row.theme_config_id,
                         'theme_name': row.theme_name,
                         'text_color': row.text_color,
-                        'button_color': row.button_color,
                         'background_color': row.background_color,
                         'menu_color': row.menu_color,
                         'border_line_color': row.border_line_color,

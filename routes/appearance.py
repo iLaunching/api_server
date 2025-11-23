@@ -40,10 +40,10 @@ class ThemeResponse(BaseModel):
 
 class UpdateThemeColorsRequest(BaseModel):
     """Request model for updating theme colors"""
-    text_color: str = Field(..., regex=r'^#[0-9A-Fa-f]{6}$', description="Hex color code")
-    background_color: str = Field(..., regex=r'^#[0-9A-Fa-f]{6}$', description="Hex color code")
-    menu_color: str = Field(..., regex=r'^#[0-9A-Fa-f]{6}$', description="Hex color code")
-    border_line_color: str = Field(..., regex=r'^#[0-9A-Fa-f]{6}$', description="Hex color code")
+    text_color: str = Field(..., pattern=r'^#[0-9A-Fa-f]{6}$', description="Hex color code")
+    background_color: str = Field(..., pattern=r'^#[0-9A-Fa-f]{6}$', description="Hex color code")
+    menu_color: str = Field(..., pattern=r'^#[0-9A-Fa-f]{6}$', description="Hex color code")
+    border_line_color: str = Field(..., pattern=r'^#[0-9A-Fa-f]{6}$', description="Hex color code")
 
 # ============================================
 # Theme Routes

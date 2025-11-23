@@ -12,7 +12,7 @@ import structlog
 
 from config.database import get_db
 from services.appearance_cache import appearance_cache, get_user_theme_colors, get_available_themes
-from models.user import OptionSet, OptionValue, ThemeConfig
+from models.database_models import OptionSet, OptionValue, ThemeConfig
 
 logger = structlog.get_logger()
 router = APIRouter()

@@ -1,10 +1,10 @@
 """
-Business AI Advisor - Main API Server
+Business AI Advisor - API Server
 
-FastAPI-based server that handles requests from Bubble frontend and coordinates 
-with other microservices for AI-powered business analysis.
+FastAPI-based server for AI-powered business analysis, streaming, and theme management.
+Authentication handled by separate AUTH-API service.
 
-AUTH ROUTES TEST - Version 1.0.2
+Version 2.0.0 - Business Logic Only
 """
 
 import os
@@ -27,7 +27,6 @@ from models.schemas import AnalysisRequest, AnalysisResponse, JobStatus
 from auth.middleware import get_current_session
 from routes.analysis import router as analysis_router
 from routes.status import router as status_router
-from routes.auth_routes import router as auth_router
 from routes.streaming import router as streaming_router
 from routes.appearance import router as appearance_router
 from services.appearance_cache import appearance_cache
@@ -99,8 +98,8 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app
 app = FastAPI(
     title="Business AI Advisor API",
-    description="Scalable AI-powered business analysis with real-time streaming",
-    version="1.0.3-auth-enabled",
+    description="AI-powered business analysis, streaming, and theme management. Auth handled by AUTH-API.",
+    version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan
@@ -123,10 +122,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers - Phase 2 Plan: Analysis + Status + WebSocket streaming + Auth + Appearance
+# Include routers - Business Logic: Analysis + Status + WebSocket streaming + Appearance
 app.include_router(analysis_router, prefix="/api/v1", tags=["analysis"])
 app.include_router(status_router, prefix="/api/v1", tags=["status"])
-app.include_router(auth_router, prefix="/api/v1", tags=["authentication"])
 app.include_router(streaming_router, prefix="/api/v1", tags=["streaming"])
 app.include_router(appearance_router, prefix="/api/v1", tags=["appearance"])
 

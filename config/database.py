@@ -105,10 +105,8 @@ async def init_database():
         # Test database connection
         async with engine.begin() as conn:
             # Import auth models to register them with Base
-            try:
-                from models.user import User, Session, UserProfile, LoginAttempt, PasswordResetToken, EmailVerificationToken
-            except ImportError:
-                logger.warning("Could not import user models, skipping table creation")
+            # User models now in AUTH-API service
+            # Theme models in database_models.py
             
             try:
                 from models.database_models import (

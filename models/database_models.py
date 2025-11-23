@@ -264,3 +264,95 @@ class WorkerHealth(Base):
         await db.commit()
         await db.refresh(worker)
         return worker
+
+
+class OptionSet(Base):
+    """Configuration option sets for static data management"""
+    __tablename__ = "option_sets"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(100), unique=True, nullable=False, index=True)
+    description = Column(Text)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    
+    # Relationships
+    option_values = relationship("OptionValue", back_populates="option_set", cascade="all, delete-orphan")
+    
+    def __repr__(self):
+        return f"<OptionSet(id={self.id}, name={self.name})>"
+    
+    def to_dict(self):
+        """Convert option set to dictionary"""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class OptionValue(Base):
+    """Individual option values within option sets"""
+    __tablename__ = "option_values"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    option_set_id = Column(Integer, ForeignKey("option_sets.id", ondelete="CASCADE"), nullable=False, index=True)
+    value_name = Column(String(100), nullable=False)
+    display_name = Column(String(200))
+    sort_order = Column(Integer, default=0)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    
+    # Relationships
+    option_set = relationship("OptionSet", back_populates="option_values")
+    theme_config = relationship("ThemeConfig", back_populates="option_value", uselist=False, cascade="all, delete-orphan")
+    
+    def __repr__(self):
+        return f"<OptionValue(id={self.id}, value_name={self.value_name})>"
+    
+    def to_dict(self):
+        """Convert option value to dictionary"""
+        return {
+            "id": self.id,
+            "option_set_id": self.option_set_id,
+            "value_name": self.value_name,
+            "display_name": self.display_name,
+            "sort_order": self.sort_order,
+            "is_active": self.is_active,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class ThemeConfig(Base):
+    """Theme configuration attributes for appearance option values"""
+    __tablename__ = "theme_configs"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    option_value_id = Column(Integer, ForeignKey("option_values.id", ondelete="CASCADE"), nullable=False, unique=True)
+    name = Column(String(100), nullable=False)  # Theme display name
+    text_color = Column(String(7), nullable=False)  # Hex color code
+    background_color = Column(String(7), nullable=False)  # Hex color code
+    menu_color = Column(String(7), nullable=False)  # Hex color code
+    border_line_color = Column(String(7), nullable=False)  # Hex color code
+    theme_metadata = Column(JSONB, default={})  # Additional theme properties (renamed from metadata)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    
+    # Relationships
+    option_value = relationship("OptionValue", back_populates="theme_config")
+    
+    def __repr__(self):
+        return f"<ThemeConfig(id={self.id}, name={self.name})>"
+    
+    def to_dict(self):
+        """Convert theme config to dictionary"""
+        return {
+            "id": self.id,
+            "option_value_id": self.option_value_id,
+            "name": self.name,
+            "text_color": self.text_color,
+            "background_color": self.background_color,
+            "menu_color": self.menu_color,
+            "border_line_color": self.border_line_color,
+            "metadata": self.theme_metadata,  # Return as 'metadata' in API
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }

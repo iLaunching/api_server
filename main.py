@@ -29,7 +29,7 @@ from routes.analysis import router as analysis_router
 from routes.status import router as status_router
 from routes.streaming import router as streaming_router
 from routes.appearance import router as appearance_router
-from services.appearance_cache import appearance_cache
+from services.option_sets_cache import option_sets_cache
 from config.database import init_database, init_redis, close_database, check_database_health, check_redis_health
 
 # Configure structured logging
@@ -83,7 +83,7 @@ async def lifespan(app: FastAPI):
     
     # Initialize Appearance Cache
     try:
-        await appearance_cache.load_cache()
+        await option_sets_cache.load_cache()
         logger.info("Appearance cache initialized successfully")
     except Exception as e:
         logger.error("Failed to initialize appearance cache", error=str(e))

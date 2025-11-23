@@ -11,7 +11,7 @@ from sqlalchemy import select, text
 import structlog
 
 from config.database import get_db
-from services.appearance_cache import appearance_cache, get_user_theme_colors, get_available_themes
+from services.option_sets_cache import option_sets_cache, get_user_theme_colors, get_available_themes
 from models.database_models import OptionSet, OptionValue, ThemeConfig
 
 logger = structlog.get_logger()
@@ -83,7 +83,7 @@ async def get_all_themes():
 async def get_theme_colors(theme_name: str):
     """Get color configuration for a specific theme"""
     try:
-        theme = appearance_cache.get_theme(theme_name)
+        theme = option_sets_cache.get_theme(theme_name)
         
         if not theme:
             raise HTTPException(status_code=404, detail=f"Theme '{theme_name}' not found")
@@ -114,7 +114,7 @@ async def update_theme_colors(
     """Update color configuration for a specific theme"""
     try:
         # Verify theme exists in cache
-        theme = appearance_cache.get_theme(theme_name)
+        theme = option_sets_cache.get_theme(theme_name)
         if not theme:
             raise HTTPException(status_code=404, detail=f"Theme '{theme_name}' not found")
         
@@ -147,7 +147,7 @@ async def update_theme_colors(
         await db.commit()
         
         # Reload the cache to reflect changes
-        await appearance_cache.reload_cache()
+        await option_sets_cache.reload_cache()
         
         logger.info("Theme colors updated", theme_name=theme_name)
         
@@ -171,10 +171,10 @@ async def update_theme_colors(
 async def get_theme_names():
     """Get list of available theme names"""
     try:
-        theme_names = appearance_cache.get_theme_names()
+        theme_names = option_sets_cache.get_theme_names()
         return {
             "theme_names": theme_names,
-            "default_theme": appearance_cache.get_default_theme(),
+            "default_theme": option_sets_cache.get_default_theme(),
             "count": len(theme_names)
         }
         
@@ -186,20 +186,20 @@ async def get_theme_names():
 async def reload_themes_cache():
     """Reload the themes cache from database (admin function)"""
     try:
-        await appearance_cache.reload_cache()
+        await option_sets_cache.reload_cache()
         
-        themes_count = len(appearance_cache._themes_cache)
+        options_count = len(option_sets_cache._options_cache)
         
-        logger.info("Themes cache reloaded", themes_count=themes_count)
+        logger.info("Option sets cache reloaded", options_count=options_count)
         
         return {
-            "message": "Themes cache reloaded successfully",
-            "themes_count": themes_count
+            "message": "Option sets cache reloaded successfully",
+            "options_count": options_count
         }
         
     except Exception as e:
-        logger.error("Failed to reload themes cache", error=str(e))
-        raise HTTPException(status_code=500, detail="Failed to reload themes cache")
+        logger.error("Failed to reload option sets cache", error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to reload option sets cache")
 
 # ============================================
 # Utility Routes
@@ -208,7 +208,7 @@ async def reload_themes_cache():
 @router.get("/themes/{theme_name}/validate")
 async def validate_theme(theme_name: str):
     """Validate if a theme name exists"""
-    is_valid = appearance_cache.is_valid_theme(theme_name)
+    is_valid = option_sets_cache.is_valid_theme(theme_name)
     
     return {
         "theme_name": theme_name,
@@ -221,8 +221,8 @@ async def get_option_sets():
     """Get all option sets"""
     try:
         return {
-            "option_sets": list(appearance_cache._option_sets_cache.values()),
-            "count": len(appearance_cache._option_sets_cache)
+            "option_sets": list(option_sets_cache._option_sets_cache.values()),
+            "count": len(option_sets_cache._option_sets_cache)
         }
         
     except Exception as e:

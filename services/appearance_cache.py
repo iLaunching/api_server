@@ -133,6 +133,24 @@ class AppearanceCache:
         ]
         return sorted(appearance_themes, key=lambda x: x.get('sort_order', 0))
     
+    def get_all_ithemes(self) -> List[Dict[str, Any]]:
+        """Get all available iTheme gradient themes sorted by display order"""
+        themes = list(self._themes_cache.values())
+        ithemes = [
+            theme for theme in themes 
+            if theme.get('set_name') == 'itheme'
+        ]
+        return sorted(ithemes, key=lambda x: x.get('sort_order', 0))
+    
+    def get_all_avatar_display_options(self) -> List[Dict[str, Any]]:
+        """Get all avatar display options sorted by display order"""
+        options = list(self._themes_cache.values())
+        avatar_options = [
+            option for option in options 
+            if option.get('set_name') == 'avatar_display'
+        ]
+        return sorted(avatar_options, key=lambda x: x.get('sort_order', 0))
+    
     def get_theme_names(self) -> List[str]:
         """Get list of available theme names"""
         return [
@@ -183,3 +201,11 @@ async def get_available_themes() -> List[Dict[str, Any]]:
 async def validate_theme_name(theme_name: str) -> bool:
     """Convenience function to validate theme name"""
     return appearance_cache.is_valid_theme(theme_name)
+
+async def get_available_ithemes() -> List[Dict[str, Any]]:
+    """Convenience function to get all available iThemes"""
+    return appearance_cache.get_all_ithemes()
+
+async def get_available_avatar_display_options() -> List[Dict[str, Any]]:
+    """Convenience function to get all available avatar display options"""
+    return appearance_cache.get_all_avatar_display_options()

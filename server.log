@@ -1,0 +1,18 @@
+nohup: ignoring input
+INFO:     Will watch for changes in these directories: ['/workspaces/Ilaunching-SERVERS/api-server']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [22096] using WatchFiles
+INFO:     Started server process [22114]
+INFO:     Waiting for application startup.
+{"error": "[Errno 111] Connection refused", "url": "postgresql+asyncpg://dummy:dummy@localhost:5432/du...", "event": "Failed to connect to database", "logger": "config.database", "level": "error", "timestamp": "2025-10-07T11:06:03.026554Z"}
+{"error": "[Errno 111] Connection refused", "event": "Failed to initialize database", "logger": "main", "level": "error", "timestamp": "2025-10-07T11:06:03.026728Z"}
+{"error": "Error 111 connecting to localhost:6379. 111.", "url": "redis://localhost:6379", "event": "Failed to connect to Redis", "logger": "config.database", "level": "error", "timestamp": "2025-10-07T11:06:03.027443Z"}
+{"error": "Error 111 connecting to localhost:6379. 111.", "event": "Failed to connect to Redis", "logger": "main", "level": "error", "timestamp": "2025-10-07T11:06:03.027578Z"}
+INFO:     Application startup complete.
+{"status_code": 503, "detail": {"status": "degraded", "timestamp": "2025-10-07T11:06:10.672389", "service": "api-server", "version": "1.0.0", "database": {"status": "unhealthy", "message": "Database connection failed: [Errno 111] Connection refused"}, "redis": {"status": "unhealthy", "message": "Redis connection failed: Error 111 connecting to localhost:6379. 111."}, "websocket_connections": 0}, "event": "HTTP exception", "logger": "main", "level": "error", "timestamp": "2025-10-07T11:06:10.674455Z"}
+INFO:     127.0.0.1:43388 - "GET /health HTTP/1.1" 503 Service Unavailable
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [22114]
+INFO:     Stopping reloader process [22096]

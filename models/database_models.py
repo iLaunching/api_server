@@ -356,3 +356,74 @@ class ThemeConfig(Base):
             "metadata": self.theme_metadata,  # Return as 'metadata' in API
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
+
+
+class SmartHub(Base):
+    """Smart Hub workspace for users - self-contained collaboration space"""
+    __tablename__ = "smart_hubs"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    owner_id = Column(UUID(as_uuid=True), nullable=False, index=True)  # References users.id in auth-api
+    
+    # Hub identity
+    name = Column(String(255), nullable=False)
+    description = Column(Text)
+    avatar = Column(Text)  # Avatar image/icon for the hub
+    hub_color = Column(String(50))  # Color theme for this hub
+    
+    # Hub status
+    is_active = Column(Boolean, default=True, index=True)
+    is_default = Column(Boolean, default=False)  # First hub is default
+    
+    # Hub settings (JSONB for flexibility)
+    settings = Column(JSONB, default={})
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), default=func.now(), index=True)
+    modified_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
+    
+    def __repr__(self):
+        return f"<SmartHub(id={self.id}, name={self.name}, owner_id={self.owner_id})>"
+    
+    def to_dict(self):
+        """Convert smart hub to dictionary"""
+        return {
+            "id": str(self.id),
+            "owner_id": str(self.owner_id),
+            "name": self.name,
+            "description": self.description,
+            "avatar": self.avatar,
+            "hub_color": self.hub_color,
+            "is_active": self.is_active,
+            "is_default": self.is_default,
+            "settings": self.settings,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "modified_at": self.modified_at.isoformat() if self.modified_at else None,
+        }
+    
+    @classmethod
+    async def create(cls, db: AsyncSession, **kwargs) -> "SmartHub":
+        """Create a new smart hub."""
+        hub = cls(**kwargs)
+        db.add(hub)
+        await db.commit()
+        await db.refresh(hub)
+        logger.info("Smart hub created", hub_id=str(hub.id), owner_id=str(hub.owner_id))
+        return hub
+    
+    @classmethod
+    async def get_by_id(cls, db: AsyncSession, hub_id: uuid.UUID) -> Optional["SmartHub"]:
+        """Get hub by ID."""
+        stmt = select(cls).where(cls.id == hub_id)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+    
+    @classmethod
+    async def get_user_hubs(cls, db: AsyncSession, owner_id: uuid.UUID, active_only: bool = True) -> List["SmartHub"]:
+        """Get all hubs for a user."""
+        stmt = select(cls).where(cls.owner_id == owner_id)
+        if active_only:
+            stmt = stmt.where(cls.is_active == True)
+        stmt = stmt.order_by(cls.is_default.desc(), cls.created_at.desc())
+        result = await db.execute(stmt)
+        return result.scalars().all()

@@ -1,6 +1,6 @@
 """
-Appearance Configuration Cache Service
-Fast access to appearance themes and option sets
+Option Sets Configuration Cache Service
+Fast access to all option sets: appearance, itheme, avatar_display, etc.
 """
 
 import asyncio
@@ -12,16 +12,16 @@ import structlog
 
 logger = structlog.get_logger()
 
-class AppearanceCache:
-    """Static appearance configuration cache for fast theme access"""
+class OptionSetsCache:
+    """Static option sets configuration cache for fast access to all option sets"""
     
     def __init__(self):
-        self._themes_cache: Dict[str, Dict[str, Any]] = {}
+        self._options_cache: Dict[str, Dict[str, Any]] = {}
         self._option_sets_cache: Dict[str, Dict[str, Any]] = {}
         self._loaded = False
     
     async def load_cache(self):
-        """Load all appearance configuration data into memory at startup"""
+        """Load all option sets configuration data into memory at startup"""
         if self._loaded:
             return
             
@@ -52,10 +52,10 @@ class AppearanceCache:
                 result = await db.execute(query)
                 rows = result.fetchall()
                 
-                # Build the themes cache
+                # Build the options cache (all option values from all option sets)
                 for row in rows:
-                    theme_key = row.value_name
-                    self._themes_cache[theme_key] = {
+                    option_key = row.value_name
+                    self._options_cache[option_key] = {
                         'option_value_id': row.option_value_id,
                         'set_name': row.set_name,
                         'value_name': row.value_name,
@@ -90,19 +90,23 @@ class AppearanceCache:
                 
                 self._loaded = True
                 logger.info(
-                    "Appearance cache loaded",
-                    themes_count=len(self._themes_cache),
+                    "Option sets cache loaded",
+                    options_count=len(self._options_cache),
                     option_sets_count=len(self._option_sets_cache)
                 )
                 break  # Exit the async generator
                 
         except Exception as e:
-            logger.error("Failed to load appearance cache", error=str(e))
+            logger.error("Failed to load option sets cache", error=str(e))
             raise
     
+    def get_option(self, value_name: str) -> Optional[Dict[str, Any]]:
+        """Get option configuration by value_name (nanosecond lookup)"""
+        return self._options_cache.get(value_name)
+    
     def get_theme(self, theme_name: str) -> Optional[Dict[str, Any]]:
-        """Get theme configuration by name (nanosecond lookup)"""
-        return self._themes_cache.get(theme_name)
+        """Get theme configuration by name - alias for get_option() for backwards compatibility"""
+        return self.get_option(theme_name)
     
     def get_theme_colors(self, theme_name: str) -> Dict[str, str]:
         """Get all theme colors for a specific theme"""
@@ -124,14 +128,32 @@ class AppearanceCache:
         }
     
     def get_all_themes(self) -> List[Dict[str, Any]]:
-        """Get all available themes sorted by display order"""
-        themes = list(self._themes_cache.values())
+        """Get all available appearance themes sorted by display order"""
+        options = list(self._options_cache.values())
         # Filter only appearance themes and sort by order
         appearance_themes = [
-            theme for theme in themes 
-            if theme.get('set_name') == 'appearance'
+            option for option in options 
+            if option.get('set_name') == 'appearance'
         ]
         return sorted(appearance_themes, key=lambda x: x.get('sort_order', 0))
+    
+    def get_all_ithemes(self) -> List[Dict[str, Any]]:
+        """Get all available iTheme gradient themes sorted by display order"""
+        options = list(self._options_cache.values())
+        ithemes = [
+            option for option in options 
+            if option.get('set_name') == 'itheme'
+        ]
+        return sorted(ithemes, key=lambda x: x.get('sort_order', 0))
+    
+    def get_all_avatar_display_options(self) -> List[Dict[str, Any]]:
+        """Get all avatar display options sorted by display order"""
+        options = list(self._options_cache.values())
+        avatar_options = [
+            option for option in options 
+            if option.get('set_name') == 'avatar_display'
+        ]
+        return sorted(avatar_options, key=lambda x: x.get('sort_order', 0))
     
     def get_theme_names(self) -> List[str]:
         """Get list of available theme names"""
@@ -143,16 +165,20 @@ class AppearanceCache:
         """Get option set by name"""
         return self._option_sets_cache.get(set_name)
     
-    def get_themes_by_set(self, set_name: str) -> List[Dict[str, Any]]:
-        """Get all themes for a specific option set"""
+    def get_options_by_set(self, set_name: str) -> List[Dict[str, Any]]:
+        """Get all options for a specific option set"""
         return [
-            theme for theme in self._themes_cache.values()
-            if theme.get('set_name') == set_name
+            option for option in self._options_cache.values()
+            if option.get('set_name') == set_name
         ]
     
+    def is_valid_option(self, value_name: str) -> bool:
+        """Check if an option value_name is valid"""
+        return value_name in self._options_cache
+    
     def is_valid_theme(self, theme_name: str) -> bool:
-        """Check if a theme name is valid"""
-        return theme_name in self._themes_cache
+        """Check if a theme name is valid - alias for is_valid_option() for backwards compatibility"""
+        return self.is_valid_option(theme_name)
     
     def get_default_theme(self) -> str:
         """Get the default theme name (first in sort order)"""
@@ -164,22 +190,30 @@ class AppearanceCache:
     async def reload_cache(self):
         """Reload the cache (useful for dynamic updates)"""
         self._loaded = False
-        self._themes_cache.clear()
+        self._options_cache.clear()
         self._option_sets_cache.clear()
         await self.load_cache()
 
 # Global cache instance
-appearance_cache = AppearanceCache()
+option_sets_cache = OptionSetsCache()
 
 # Utility functions for easy access
 async def get_user_theme_colors(theme_name: str) -> Dict[str, str]:
     """Convenience function to get theme colors"""
-    return appearance_cache.get_theme_colors(theme_name)
+    return option_sets_cache.get_theme_colors(theme_name)
 
 async def get_available_themes() -> List[Dict[str, Any]]:
-    """Convenience function to get all available themes"""
-    return appearance_cache.get_all_themes()
+    """Convenience function to get all available appearance themes"""
+    return option_sets_cache.get_all_themes()
 
 async def validate_theme_name(theme_name: str) -> bool:
     """Convenience function to validate theme name"""
-    return appearance_cache.is_valid_theme(theme_name)
+    return option_sets_cache.is_valid_theme(theme_name)
+
+async def get_available_ithemes() -> List[Dict[str, Any]]:
+    """Convenience function to get all available iThemes"""
+    return option_sets_cache.get_all_ithemes()
+
+async def get_available_avatar_display_options() -> List[Dict[str, Any]]:
+    """Convenience function to get all available avatar display options"""
+    return option_sets_cache.get_all_avatar_display_options()

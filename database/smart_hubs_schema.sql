@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS smart_hubs (
     description TEXT,
     avatar TEXT,
     hub_color VARCHAR(50),
+    order_number INTEGER DEFAULT 0 NOT NULL,
     is_active BOOLEAN DEFAULT true NOT NULL,
     is_default BOOLEAN DEFAULT false NOT NULL,
     settings JSONB DEFAULT '{}' NOT NULL,
@@ -46,6 +47,7 @@ COMMENT ON COLUMN smart_hubs.name IS 'Display name of the hub';
 COMMENT ON COLUMN smart_hubs.description IS 'Hub description/purpose';
 COMMENT ON COLUMN smart_hubs.avatar IS 'Hub avatar image URL or icon identifier';
 COMMENT ON COLUMN smart_hubs.hub_color IS 'Hub theme color (hex code)';
+COMMENT ON COLUMN smart_hubs.order_number IS 'Display order for user hubs (ascending)';
 COMMENT ON COLUMN smart_hubs.is_active IS 'Whether hub is active or archived';
 COMMENT ON COLUMN smart_hubs.is_default IS 'Whether this is the user default hub (only one per user)';
 COMMENT ON COLUMN smart_hubs.settings IS 'Hub-specific settings and preferences (JSONB)';

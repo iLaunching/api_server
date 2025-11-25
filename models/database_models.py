@@ -370,6 +370,7 @@ class SmartHub(Base):
     description = Column(Text)
     avatar = Column(Text)  # Avatar image/icon for the hub
     hub_color = Column(String(50))  # Color theme for this hub
+    order_number = Column(Integer, default=0)  # Display order for user's hubs
     
     # Hub status
     is_active = Column(Boolean, default=True, index=True)
@@ -394,6 +395,7 @@ class SmartHub(Base):
             "description": self.description,
             "avatar": self.avatar,
             "hub_color": self.hub_color,
+            "order_number": self.order_number,
             "is_active": self.is_active,
             "is_default": self.is_default,
             "settings": self.settings,
@@ -424,6 +426,6 @@ class SmartHub(Base):
         stmt = select(cls).where(cls.owner_id == owner_id)
         if active_only:
             stmt = stmt.where(cls.is_active == True)
-        stmt = stmt.order_by(cls.is_default.desc(), cls.created_at.desc())
+        stmt = stmt.order_by(cls.is_default.desc(), cls.order_number.asc(), cls.created_at.desc())
         result = await db.execute(stmt)
         return result.scalars().all()

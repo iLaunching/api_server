@@ -383,6 +383,9 @@ class SmartHub(Base):
     created_at = Column(DateTime(timezone=True), default=func.now(), index=True)
     modified_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
     
+    # Relationships
+    smart_matrices = relationship("SmartMatrix", back_populates="smart_hub", cascade="all, delete-orphan")
+    
     def __repr__(self):
         return f"<SmartHub(id={self.id}, name={self.name}, owner_id={self.owner_id})>"
     
@@ -427,5 +430,66 @@ class SmartHub(Base):
         if active_only:
             stmt = stmt.where(cls.is_active == True)
         stmt = stmt.order_by(cls.is_default.desc(), cls.order_number.asc(), cls.created_at.desc())
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+
+class SmartMatrix(Base):
+    """Smart Matrix - The brain/data center for each Smart Hub"""
+    __tablename__ = "smart_matrices"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    smart_hub_id = Column(UUID(as_uuid=True), ForeignKey("smart_hubs.id", ondelete="CASCADE"), nullable=False, index=True)
+    owner_id = Column(UUID(as_uuid=True), nullable=False, index=True)  # References users.id in auth-api
+    
+    # Matrix identity
+    name = Column(Text, nullable=False)
+    color = Column(Text)  # Color theme for this matrix
+    order_number = Column(Integer, default=0)  # Display order within hub
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), default=func.now(), index=True)
+    modified_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
+    
+    # Relationships
+    smart_hub = relationship("SmartHub", back_populates="smart_matrices")
+    
+    def __repr__(self):
+        return f"<SmartMatrix(id={self.id}, name={self.name}, smart_hub_id={self.smart_hub_id})>"
+    
+    def to_dict(self):
+        """Convert smart matrix to dictionary"""
+        return {
+            "id": str(self.id),
+            "smart_hub_id": str(self.smart_hub_id),
+            "owner_id": str(self.owner_id),
+            "name": self.name,
+            "color": self.color,
+            "order_number": self.order_number,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "modified_at": self.modified_at.isoformat() if self.modified_at else None,
+        }
+    
+    @classmethod
+    async def create(cls, db: AsyncSession, **kwargs) -> "SmartMatrix":
+        """Create a new smart matrix."""
+        matrix = cls(**kwargs)
+        db.add(matrix)
+        await db.commit()
+        await db.refresh(matrix)
+        logger.info("Smart matrix created", matrix_id=str(matrix.id), smart_hub_id=str(matrix.smart_hub_id))
+        return matrix
+    
+    @classmethod
+    async def get_by_id(cls, db: AsyncSession, matrix_id: uuid.UUID) -> Optional["SmartMatrix"]:
+        """Get matrix by ID."""
+        stmt = select(cls).where(cls.id == matrix_id)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+    
+    @classmethod
+    async def get_hub_matrices(cls, db: AsyncSession, smart_hub_id: uuid.UUID) -> List["SmartMatrix"]:
+        """Get all matrices for a smart hub."""
+        stmt = select(cls).where(cls.smart_hub_id == smart_hub_id).order_by(cls.order_number.asc(), cls.created_at.desc())
         result = await db.execute(stmt)
         return result.scalars().all()

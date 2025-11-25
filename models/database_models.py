@@ -384,7 +384,7 @@ class SmartHub(Base):
     modified_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
     
     # Relationships
-    smart_matrices = relationship("SmartMatrix", back_populates="smart_hub", cascade="all, delete-orphan")
+    smart_matrix = relationship("SmartMatrix", back_populates="smart_hub", uselist=False, cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<SmartHub(id={self.id}, name={self.name}, owner_id={self.owner_id})>"
@@ -435,11 +435,11 @@ class SmartHub(Base):
 
 
 class SmartMatrix(Base):
-    """Smart Matrix - The brain/data center for each Smart Hub"""
+    """Smart Matrix - The brain/data center for each Smart Hub (one per hub)"""
     __tablename__ = "smart_matrices"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    smart_hub_id = Column(UUID(as_uuid=True), ForeignKey("smart_hubs.id", ondelete="CASCADE"), nullable=False, index=True)
+    smart_hub_id = Column(UUID(as_uuid=True), ForeignKey("smart_hubs.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
     owner_id = Column(UUID(as_uuid=True), nullable=False, index=True)  # References users.id in auth-api
     
     # Matrix identity
@@ -452,7 +452,7 @@ class SmartMatrix(Base):
     modified_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
     
     # Relationships
-    smart_hub = relationship("SmartHub", back_populates="smart_matrices")
+    smart_hub = relationship("SmartHub", back_populates="smart_matrix")
     
     def __repr__(self):
         return f"<SmartMatrix(id={self.id}, name={self.name}, smart_hub_id={self.smart_hub_id})>"
@@ -488,8 +488,8 @@ class SmartMatrix(Base):
         return result.scalar_one_or_none()
     
     @classmethod
-    async def get_hub_matrices(cls, db: AsyncSession, smart_hub_id: uuid.UUID) -> List["SmartMatrix"]:
-        """Get all matrices for a smart hub."""
-        stmt = select(cls).where(cls.smart_hub_id == smart_hub_id).order_by(cls.order_number.asc(), cls.created_at.desc())
+    async def get_by_hub_id(cls, db: AsyncSession, smart_hub_id: uuid.UUID) -> Optional["SmartMatrix"]:
+        """Get the matrix for a smart hub (one-to-one)."""
+        stmt = select(cls).where(cls.smart_hub_id == smart_hub_id)
         result = await db.execute(stmt)
-        return result.scalars().all()
+        return result.scalar_one_or_none()

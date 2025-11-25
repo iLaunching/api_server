@@ -1,10 +1,10 @@
 -- Smart Matrices Schema
--- The brain/data center for each Smart Hub - one per hub
+-- The brain/data center for each Smart Hub - ONE per hub (one-to-one relationship)
 
 -- Create smart_matrices table
 CREATE TABLE IF NOT EXISTS smart_matrices (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    smart_hub_id UUID NOT NULL REFERENCES smart_hubs(id) ON DELETE CASCADE,
+    smart_hub_id UUID NOT NULL UNIQUE REFERENCES smart_hubs(id) ON DELETE CASCADE,
     owner_id UUID NOT NULL,  -- References users.id in auth database
     name TEXT NOT NULL,
     color TEXT,
@@ -34,8 +34,8 @@ CREATE TRIGGER trigger_update_smart_matrices_modified_at
     EXECUTE FUNCTION update_smart_matrices_modified_at();
 
 -- Comments for documentation
-COMMENT ON TABLE smart_matrices IS 'Smart Matrix - The brain/data center for each Smart Hub';
-COMMENT ON COLUMN smart_matrices.smart_hub_id IS 'The Smart Hub this matrix belongs to';
+COMMENT ON TABLE smart_matrices IS 'Smart Matrix - The brain/data center for each Smart Hub (one-to-one)';
+COMMENT ON COLUMN smart_matrices.smart_hub_id IS 'The Smart Hub this matrix belongs to (unique - one per hub)';
 COMMENT ON COLUMN smart_matrices.owner_id IS 'User who owns this matrix (references auth database)';
 COMMENT ON COLUMN smart_matrices.name IS 'Display name of the matrix';
 COMMENT ON COLUMN smart_matrices.color IS 'Color theme for this matrix';

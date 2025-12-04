@@ -248,3 +248,23 @@ async def get_smarthub_colors():
     except Exception as e:
         logger.error("Failed to get Smart Hub colors", error=str(e))
         raise HTTPException(status_code=500, detail="Failed to retrieve Smart Hub colors")
+
+@router.get("/marketing-options")
+async def get_marketing_options():
+    """Get all available onboarding marketing source options"""
+    try:
+        options = option_sets_cache.get_options_by_set('onboarding_marketing_options')
+        
+        # Sort by sort_order
+        options_sorted = sorted(options, key=lambda x: x.get('sort_order', 0))
+        
+        logger.info("Marketing options retrieved", count=len(options_sorted))
+        
+        return {
+            "options": options_sorted,
+            "count": len(options_sorted)
+        }
+        
+    except Exception as e:
+        logger.error("Failed to get marketing options", error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to retrieve marketing options")

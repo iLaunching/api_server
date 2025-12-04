@@ -228,3 +228,43 @@ async def get_option_sets():
     except Exception as e:
         logger.error("Failed to get option sets", error=str(e))
         raise HTTPException(status_code=500, detail="Failed to retrieve option sets")
+
+@router.get("/smarthub-colors")
+async def get_smarthub_colors():
+    """Get all available Smart Hub color scheme options"""
+    try:
+        colors = option_sets_cache.get_options_by_set('smarthub_color_scheme')
+        
+        # Sort by sort_order
+        colors_sorted = sorted(colors, key=lambda x: x.get('sort_order', 0))
+        
+        logger.info("Smart Hub colors retrieved", count=len(colors_sorted))
+        
+        return {
+            "colors": colors_sorted,
+            "count": len(colors_sorted)
+        }
+        
+    except Exception as e:
+        logger.error("Failed to get Smart Hub colors", error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to retrieve Smart Hub colors")
+
+@router.get("/marketing-options")
+async def get_marketing_options():
+    """Get all available onboarding marketing source options"""
+    try:
+        options = option_sets_cache.get_options_by_set('onboarding_marketing_options')
+        
+        # Sort by sort_order
+        options_sorted = sorted(options, key=lambda x: x.get('sort_order', 0))
+        
+        logger.info("Marketing options retrieved", count=len(options_sorted))
+        
+        return {
+            "options": options_sorted,
+            "count": len(options_sorted)
+        }
+        
+    except Exception as e:
+        logger.error("Failed to get marketing options", error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to retrieve marketing options")

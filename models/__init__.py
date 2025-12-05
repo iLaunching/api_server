@@ -4,7 +4,8 @@ Models package - imports all models to ensure they're registered with SQLAlchemy
 
 # Import all models to ensure they're registered with SQLAlchemy Base.metadata
 # This is crucial for foreign key relationships to work correctly
-from models.user import UserProfile, ThemeConfig  # Import UserProfile first
+from models.user import UserProfile, ThemeConfig
+from models.user_navigation import UserNavigation
 from models.database_models import (
     SmartHub,
     SmartMatrix,

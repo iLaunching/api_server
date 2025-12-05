@@ -109,7 +109,8 @@ class UserProfile(Base):
     
     # Relationships
     user = relationship("User", back_populates="profile")
-    navigation = relationship("UserNavigation", back_populates="user_profile", uselist=False, lazy='select')
+    # Note: UserNavigation relationship not defined here to avoid circular import
+    # Access navigation via: UserNavigation.get_by_user_profile_id(db, user_profile.id)
     
     def __repr__(self):
         return f"<UserProfile(id={self.id}, user_id={self.user_id})>"

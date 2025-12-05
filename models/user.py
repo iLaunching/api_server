@@ -117,6 +117,10 @@ class UserProfile(Base):
     preferences = Column(JSONB, default={})
     selected_theme = Column(String(50), default="sun")  # User's selected appearance theme
     onboarding_completed = Column(Boolean, default=False)
+    
+    # Navigation (one-to-one with user_navigation table)
+    user_navigation_id = Column(UUID(as_uuid=True), nullable=True, unique=True, index=True)
+    
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -140,6 +144,7 @@ class UserProfile(Base):
             "preferences": self.preferences,
             "selected_theme": self.selected_theme,
             "onboarding_completed": self.onboarding_completed,
+            "user_navigation_id": str(self.user_navigation_id) if self.user_navigation_id else None,
         }
 
 

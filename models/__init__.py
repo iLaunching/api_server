@@ -17,11 +17,6 @@ from models.database_models import (
     OptionValue,
     ThemeConfig,
 )
-from models.user_navigation import UserNavigation
-
-# No dynamic relationship configuration needed
-# UserNavigation has one-way relationship to UserProfile
-# Access navigation by querying: UserNavigation.get_by_user_profile_id()
 
 __all__ = [
     'UserProfile',
@@ -35,5 +30,4 @@ __all__ = [
     'WorkerHealth',
     'OptionSet',
     'OptionValue',
-    'UserNavigation',
 ]

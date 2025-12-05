@@ -18,11 +18,12 @@ logger = structlog.get_logger()
 
 
 class UserNavigation(Base):
-    """User Navigation - Tracks current active Smart Hub and navigation memory"""
+    """User Navigation - Tracks current active Smart Hub and navigation memory
+    One-to-one relationship with user_profiles"""
     __tablename__ = "user_navigation"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    user_profile_id = Column(UUID(as_uuid=True), ForeignKey("user_profiles.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
     current_smart_hub_id = Column(UUID(as_uuid=True), ForeignKey("smart_hubs.id", ondelete="SET NULL"), nullable=True, index=True)
     
     # Timestamps
@@ -33,13 +34,13 @@ class UserNavigation(Base):
     smart_hub = relationship("SmartHub", foreign_keys=[current_smart_hub_id])
     
     def __repr__(self):
-        return f"<UserNavigation(id={self.id}, user_id={self.user_id}, current_smart_hub_id={self.current_smart_hub_id})>"
+        return f"<UserNavigation(id={self.id}, user_profile_id={self.user_profile_id}, current_smart_hub_id={self.current_smart_hub_id})>"
     
     def to_dict(self):
         """Convert user navigation to dictionary"""
         return {
             "id": str(self.id),
-            "user_id": str(self.user_id),
+            "user_profile_id": str(self.user_profile_id),
             "current_smart_hub_id": str(self.current_smart_hub_id) if self.current_smart_hub_id else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
@@ -52,22 +53,45 @@ class UserNavigation(Base):
         db.add(navigation)
         await db.commit()
         await db.refresh(navigation)
-        logger.info("User navigation created", navigation_id=str(navigation.id), user_id=str(navigation.user_id))
+        logger.info("User navigation created", navigation_id=str(navigation.id), user_profile_id=str(navigation.user_profile_id))
         return navigation
     
     @classmethod
-    async def get_by_user_id(cls, db: AsyncSession, user_id: uuid.UUID) -> Optional["UserNavigation"]:
-        """Get navigation record for a user."""
-        stmt = select(cls).where(cls.user_id == user_id)
+    async def get_by_user_profile_id(cls, db: AsyncSession, user_profile_id: uuid.UUID) -> Optional["UserNavigation"]:
+        """Get navigation record for a user profile."""
+        stmt = select(cls).where(cls.user_profile_id == user_profile_id)
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
     
     @classmethod
+    async def get_by_user_id(cls, db: AsyncSession, user_id: uuid.UUID) -> Optional["UserNavigation"]:
+        """Get navigation record by user_id (looks up user_profile first)."""
+        # First get the user_profile_id from users table
+        from models.database_models import UserProfile
+        stmt = select(UserProfile).where(UserProfile.user_id == user_id)
+        result = await db.execute(stmt)
+        user_profile = result.scalar_one_or_none()
+        
+        if not user_profile:
+            return None
+            
+        return await cls.get_by_user_profile_id(db, user_profile.id)
+    
+    @classmethod
     async def get_or_create(cls, db: AsyncSession, user_id: uuid.UUID) -> "UserNavigation":
-        """Get existing navigation record or create new one."""
+        """Get existing navigation record or create new one (by user_id)."""
         navigation = await cls.get_by_user_id(db, user_id)
         if not navigation:
-            navigation = await cls.create(db=db, user_id=user_id)
+            # Get user_profile_id first
+            from models.database_models import UserProfile
+            stmt = select(UserProfile).where(UserProfile.user_id == user_id)
+            result = await db.execute(stmt)
+            user_profile = result.scalar_one_or_none()
+            
+            if not user_profile:
+                raise ValueError(f"No user_profile found for user_id {user_id}")
+            
+            navigation = await cls.create(db=db, user_profile_id=user_profile.id)
         return navigation
     
     async def update_current_hub(self, db: AsyncSession, smart_hub_id: uuid.UUID):
@@ -76,5 +100,5 @@ class UserNavigation(Base):
         await db.commit()
         await db.refresh(self)
         logger.info("Current Smart Hub updated", 
-                   user_id=str(self.user_id), 
+                   user_profile_id=str(self.user_profile_id), 
                    smart_hub_id=str(smart_hub_id))

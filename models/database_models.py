@@ -18,6 +18,9 @@ import structlog
 
 logger = structlog.get_logger()
 
+# Import UserNavigation model
+from models.user_navigation import UserNavigation
+
 class AnalysisJob(Base):
     __tablename__ = "analysis_jobs"
     

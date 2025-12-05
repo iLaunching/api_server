@@ -14,6 +14,7 @@ import structlog
 
 from config.database import get_db
 from models.database_models import SmartHub, SmartMatrix
+from models.user_navigation import UserNavigation
 from auth.middleware import get_current_session
 
 logger = structlog.get_logger()
@@ -209,6 +210,13 @@ async def create_matrix_step(
         
         # Update user's onboarding status in auth-api
         await update_user_onboarding_status(user_id, session_data)
+        
+        # Create or update user navigation to set current Smart Hub
+        navigation = await UserNavigation.get_or_create(db, user_id)
+        await navigation.update_current_hub(db, hub_uuid)
+        logger.info("User navigation updated with current Smart Hub", 
+                   user_id=str(user_id), 
+                   hub_id=str(hub_uuid))
         
         return OnboardingResponse(
             success=True,

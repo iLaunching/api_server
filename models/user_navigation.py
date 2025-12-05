@@ -30,8 +30,8 @@ class UserNavigation(Base):
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    # Relationships
-    # user_profile relationship added dynamically in models/__init__.py
+    # Relationships (one-way only to avoid circular import)
+    user_profile = relationship("UserProfile", foreign_keys=[user_profile_id])
     smart_hub = relationship("SmartHub", foreign_keys=[current_smart_hub_id])
     
     def __repr__(self):

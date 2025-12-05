@@ -5,9 +5,9 @@ Defines database models for users, sessions, and authentication.
 
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Integer, foreign
+from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Integer
 from sqlalchemy.dialects.postgresql import UUID, JSONB
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, foreign
 import uuid
 
 from config.database import Base

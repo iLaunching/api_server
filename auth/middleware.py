@@ -26,6 +26,7 @@ async def get_current_session(credentials: Optional[HTTPAuthorizationCredentials
     """
     
     if not credentials:
+        logger.warning("No authorization credentials provided")
         raise HTTPException(
             status_code=401,
             detail="Missing authorization token",
@@ -33,6 +34,7 @@ async def get_current_session(credentials: Optional[HTTPAuthorizationCredentials
         )
     
     token = credentials.credentials
+    logger.info("Validating token with auth-api", auth_api_url=AUTH_API_URL)
     
     # Validate token with auth-api
     try:
@@ -43,7 +45,10 @@ async def get_current_session(credentials: Optional[HTTPAuthorizationCredentials
                 timeout=5.0
             )
             
+            logger.info("Auth API response", status=response.status_code)
+            
             if response.status_code == 401:
+                logger.warning("Token validation failed - 401 from auth-api")
                 raise HTTPException(
                     status_code=401,
                     detail="Invalid or expired token",
@@ -59,6 +64,7 @@ async def get_current_session(credentials: Optional[HTTPAuthorizationCredentials
                 )
             
             user_data = response.json()
+            logger.info("Token validated successfully", user_id=user_data["user"]["id"])
             
             # Return session data with user_id
             return {

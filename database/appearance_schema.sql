@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS theme_configs (
     background_color VARCHAR(7) NOT NULL,
     menu_color VARCHAR(7) NOT NULL,
     border_line_color VARCHAR(7) NOT NULL,
-    metadata JSONB DEFAULT '{}',
+    theme_metadata JSONB DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

@@ -256,7 +256,7 @@ class ThemeConfig(Base):
     background_color = Column(String(7), nullable=False)  # Hex color code
     menu_color = Column(String(7), nullable=False)  # Hex color code
     border_line_color = Column(String(7), nullable=False)  # Hex color code
-    metadata = Column(JSONB, default={})  # Additional theme properties
+    theme_metadata = Column(JSONB, default={})  # Additional theme properties (renamed from 'metadata' to avoid SQLAlchemy conflict)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     
     # Relationships
@@ -275,6 +275,6 @@ class ThemeConfig(Base):
             "background_color": self.background_color,
             "menu_color": self.menu_color,
             "border_line_color": self.border_line_color,
-            "metadata": self.metadata,
+            "metadata": self.theme_metadata,  # Keep 'metadata' in dict for API compatibility
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }

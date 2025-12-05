@@ -1,8 +1,11 @@
 -- User Navigation Table Schema
 -- Tracks user's current active Smart Hub for quick navigation and memory
 
+-- Drop existing table if it exists (to recreate with correct constraints)
+DROP TABLE IF EXISTS user_navigation CASCADE;
+
 -- Create user_navigation table
-CREATE TABLE IF NOT EXISTS user_navigation (
+CREATE TABLE user_navigation (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     
     -- Foreign Keys

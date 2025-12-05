@@ -118,6 +118,9 @@ class UserProfile(Base):
     selected_theme = Column(String(50), default="sun")  # User's selected appearance theme
     onboarding_completed = Column(Boolean, default=False)
     
+    # Account type (foreign key to option_values)
+    account_type_id = Column(Integer, ForeignKey("option_values.id", ondelete="SET NULL"), nullable=True, index=True)
+    
     # Navigation (one-to-one with user_navigation table)
     user_navigation_id = Column(UUID(as_uuid=True), nullable=True, unique=True, index=True)
     
@@ -132,12 +135,21 @@ class UserProfile(Base):
         uselist=False,
         viewonly=True
     )
+    account_type = relationship("OptionValue", foreign_keys=[account_type_id])
     
     def __repr__(self):
         return f"<UserProfile(id={self.id}, user_id={self.user_id})>"
     
     def to_dict(self):
         """Convert profile to dictionary"""
+        account_type_data = None
+        if self.account_type:
+            account_type_data = {
+                "id": self.account_type.id,
+                "value_name": self.account_type.value_name,
+                "display_name": self.account_type.display_name
+            }
+        
         return {
             "id": str(self.id),
             "user_id": str(self.user_id),
@@ -150,6 +162,8 @@ class UserProfile(Base):
             "selected_theme": self.selected_theme,
             "onboarding_completed": self.onboarding_completed,
             "user_navigation_id": str(self.user_navigation_id) if self.user_navigation_id else None,
+            "account_type_id": self.account_type_id,
+            "account_type": account_type_data,
         }
 
 

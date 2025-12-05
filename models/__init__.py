@@ -8,13 +8,13 @@ from models.user import UserProfile, ThemeConfig  # Import UserProfile first
 from models.database_models import (
     SmartHub,
     SmartMatrix,
-    MatrixColumn,
-    MatrixRow,
-    MatrixCell,
-    SmartHubColor,
-    MarketingOption,
-    ChatMessage,
-    ChatSession
+    AnalysisJob,
+    AnalysisResult,
+    DataCache,
+    LLMUsage,
+    WorkerHealth,
+    OptionSet,
+    OptionValue,
 )
 from models.user_navigation import UserNavigation  # Import after UserProfile
 
@@ -23,12 +23,12 @@ __all__ = [
     'ThemeConfig',
     'SmartHub',
     'SmartMatrix',
-    'MatrixColumn',
-    'MatrixRow',
-    'MatrixCell',
-    'SmartHubColor',
-    'MarketingOption',
-    'ChatMessage',
-    'ChatSession',
+    'AnalysisJob',
+    'AnalysisResult',
+    'DataCache',
+    'LLMUsage',
+    'WorkerHealth',
+    'OptionSet',
+    'OptionValue',
     'UserNavigation',
 ]

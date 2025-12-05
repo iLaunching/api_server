@@ -67,7 +67,7 @@ class UserNavigation(Base):
     async def get_by_user_id(cls, db: AsyncSession, user_id: uuid.UUID) -> Optional["UserNavigation"]:
         """Get navigation record by user_id (looks up user_profile first)."""
         # First get the user_profile_id from users table
-        from models.database_models import UserProfile
+        from models.user import UserProfile
         stmt = select(UserProfile).where(UserProfile.user_id == user_id)
         result = await db.execute(stmt)
         user_profile = result.scalar_one_or_none()
@@ -83,7 +83,7 @@ class UserNavigation(Base):
         navigation = await cls.get_by_user_id(db, user_id)
         if not navigation:
             # Get user_profile_id first
-            from models.database_models import UserProfile
+            from models.user import UserProfile
             stmt = select(UserProfile).where(UserProfile.user_id == user_id)
             result = await db.execute(stmt)
             user_profile = result.scalar_one_or_none()

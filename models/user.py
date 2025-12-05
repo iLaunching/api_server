@@ -5,7 +5,7 @@ Defines database models for users, sessions, and authentication.
 
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Integer
+from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Integer, foreign
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 import uuid
@@ -126,7 +126,12 @@ class UserProfile(Base):
     
     # Relationships
     user = relationship("User", back_populates="profile")
-    navigation = relationship("UserNavigation", foreign_keys="[UserNavigation.user_profile_id]", uselist=False, viewonly=True)
+    navigation = relationship(
+        "UserNavigation",
+        primaryjoin="UserProfile.id == foreign(UserNavigation.user_profile_id)",
+        uselist=False,
+        viewonly=True
+    )
     
     def __repr__(self):
         return f"<UserProfile(id={self.id}, user_id={self.user_id})>"

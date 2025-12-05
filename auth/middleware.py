@@ -19,11 +19,10 @@ security = HTTPBearer(auto_error=False)
 # Auth API URL
 AUTH_API_URL = os.getenv("AUTH_API_URL", "https://ilaunching-servers-production-auth.up.railway.app")
 
-async def get_current_session(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
-) -> Dict:
+async def get_current_session(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> Dict:
     """
     Validate JWT token with auth-api and return user session data.
+    This calls the auth-api /api/auth/me endpoint to validate the token.
     """
     
     if not credentials:
@@ -65,12 +64,11 @@ async def get_current_session(
                 )
             
             user_data = response.json()
-            user_id = uuid.UUID(user_data["user"]["id"])
-            logger.info("Token validated successfully", user_id=str(user_id))
+            logger.info("Token validated successfully", user_id=user_data["user"]["id"])
             
             # Return session data with user_id and token
             return {
-                "user_id": str(user_id),
+                "user_id": user_data["user"]["id"],
                 "email": user_data["user"]["email"],
                 "first_name": user_data["user"].get("first_name"),
                 "last_name": user_data["user"].get("last_name"),

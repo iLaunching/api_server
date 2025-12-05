@@ -211,16 +211,12 @@ async def create_matrix_step(
         # Update user's onboarding status in auth-api
         await update_user_onboarding_status(user_id, session_data)
         
-        # Set current Smart Hub in user navigation (should already exist from signup)
-        navigation = await UserNavigation.get_by_user_id(db, user_id)
-        if navigation:
-            await navigation.set_current_smart_hub(db, hub_uuid)
-            logger.info("User navigation updated with current Smart Hub", 
-                       user_id=str(user_id), 
-                       hub_id=str(hub_uuid))
-        else:
-            logger.warning("Navigation record not found for user during onboarding", 
-                          user_id=str(user_id))
+        # Create or update user navigation to set current Smart Hub
+        navigation = await UserNavigation.get_or_create(db, user_id)
+        await navigation.update_current_hub(db, hub_uuid)
+        logger.info("User navigation updated with current Smart Hub", 
+                   user_id=str(user_id), 
+                   hub_id=str(hub_uuid))
         
         return OnboardingResponse(
             success=True,

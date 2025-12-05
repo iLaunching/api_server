@@ -23,6 +23,7 @@ import redis.asyncio as redis
 from pydantic import BaseModel, Field
 
 # Import our modules
+import models  # Import all models first to register with SQLAlchemy
 from models.schemas import AnalysisRequest, AnalysisResponse, JobStatus
 from auth.middleware import get_current_session
 from routes.analysis import router as analysis_router

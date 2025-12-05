@@ -8,10 +8,9 @@ from typing import Optional
 from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Integer
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
-from sqlalchemy.ext.declarative import declarative_base
 import uuid
 
-Base = declarative_base()
+from config.database import Base
 
 class User(Base):
     """User account model"""
@@ -19,8 +18,11 @@ class User(Base):
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email = Column(String(255), unique=True, nullable=False, index=True)
-    password_hash = Column(String(255), nullable=False)
-    name = Column(String(255))
+    password_hash = Column(String(255), nullable=True)  # Nullable for OAuth users
+    first_name = Column(String(255))
+    last_name = Column(String(255))
+    oauth_provider = Column(String(50))
+    oauth_provider_id = Column(String(255))
     role = Column(String(50), default="user")
     subscription_tier = Column(String(50), default="free")
     email_verified = Column(Boolean, default=False)
@@ -37,10 +39,21 @@ class User(Base):
     
     def to_dict(self, include_sensitive=False):
         """Convert user to dictionary (exclude password by default)"""
+        # Construct full name from first_name and last_name
+        name = None
+        if self.first_name and self.last_name:
+            name = f"{self.first_name} {self.last_name}"
+        elif self.first_name:
+            name = self.first_name
+        elif self.last_name:
+            name = self.last_name
+            
         data = {
             "id": str(self.id),
             "email": self.email,
-            "name": self.name,
+            "first_name": self.first_name,
+            "last_name": self.last_name,
+            "name": name,  # Computed field for backwards compatibility
             "role": self.role,
             "subscription_tier": self.subscription_tier,
             "email_verified": self.email_verified,
@@ -109,6 +122,7 @@ class UserProfile(Base):
     
     # Relationships
     user = relationship("User", back_populates="profile")
+    # navigation relationship added dynamically in models/__init__.py
     
     def __repr__(self):
         return f"<UserProfile(id={self.id}, user_id={self.user_id})>"
@@ -187,94 +201,3 @@ class EmailVerificationToken(Base):
     def __repr__(self):
         return f"<EmailVerificationToken(user_id={self.user_id}, used={self.used})>"
 
-
-class OptionSet(Base):
-    """Configuration option sets for static data management"""
-    __tablename__ = "option_sets"
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(100), unique=True, nullable=False, index=True)
-    description = Column(Text)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
-    
-    # Relationships
-    option_values = relationship("OptionValue", back_populates="option_set", cascade="all, delete-orphan")
-    
-    def __repr__(self):
-        return f"<OptionSet(id={self.id}, name={self.name})>"
-    
-    def to_dict(self):
-        """Convert option set to dictionary"""
-        return {
-            "id": self.id,
-            "name": self.name,
-            "description": self.description,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-        }
-
-
-class OptionValue(Base):
-    """Individual option values within option sets"""
-    __tablename__ = "option_values"
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    option_set_id = Column(Integer, ForeignKey("option_sets.id", ondelete="CASCADE"), nullable=False, index=True)
-    value_name = Column(String(100), nullable=False)
-    display_name = Column(String(200))
-    sort_order = Column(Integer, default=0)
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
-    
-    # Relationships
-    option_set = relationship("OptionSet", back_populates="option_values")
-    theme_config = relationship("ThemeConfig", back_populates="option_value", uselist=False, cascade="all, delete-orphan")
-    
-    def __repr__(self):
-        return f"<OptionValue(id={self.id}, value_name={self.value_name})>"
-    
-    def to_dict(self):
-        """Convert option value to dictionary"""
-        return {
-            "id": self.id,
-            "option_set_id": self.option_set_id,
-            "value_name": self.value_name,
-            "display_name": self.display_name,
-            "sort_order": self.sort_order,
-            "is_active": self.is_active,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-        }
-
-
-class ThemeConfig(Base):
-    """Theme configuration attributes for appearance option values"""
-    __tablename__ = "theme_configs"
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    option_value_id = Column(Integer, ForeignKey("option_values.id", ondelete="CASCADE"), nullable=False, unique=True)
-    name = Column(String(100), nullable=False)  # Theme display name
-    text_color = Column(String(7), nullable=False)  # Hex color code
-    background_color = Column(String(7), nullable=False)  # Hex color code
-    menu_color = Column(String(7), nullable=False)  # Hex color code
-    border_line_color = Column(String(7), nullable=False)  # Hex color code
-    metadata = Column(JSONB, default={})  # Additional theme properties
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
-    
-    # Relationships
-    option_value = relationship("OptionValue", back_populates="theme_config")
-    
-    def __repr__(self):
-        return f"<ThemeConfig(id={self.id}, name={self.name})>"
-    
-    def to_dict(self):
-        """Convert theme config to dictionary"""
-        return {
-            "id": self.id,
-            "option_value_id": self.option_value_id,
-            "name": self.name,
-            "text_color": self.text_color,
-            "background_color": self.background_color,
-            "menu_color": self.menu_color,
-            "border_line_color": self.border_line_color,
-            "metadata": self.metadata,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-        }

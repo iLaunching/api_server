@@ -107,20 +107,22 @@ app = FastAPI(
 )
 
 # CORS middleware - allow frontend access
+# Default to allow all origins for development
 allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "*")
 if allowed_origins_str == "*":
     allowed_origins = ["*"]
 else:
     allowed_origins = [origin.strip() for origin in allowed_origins_str.split(",")]
 
-logger.info("CORS configured", allowed_origins=allowed_origins)
+logger.info("CORS configuration", allowed_origins=allowed_origins, credentials=True)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Include routers - Business Logic: Analysis + Status + WebSocket streaming + Appearance + Onboarding

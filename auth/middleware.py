@@ -40,7 +40,7 @@ async def get_current_session(credentials: Optional[HTTPAuthorizationCredentials
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                f"{AUTH_API_URL}/api/auth/me",
+                f"{AUTH_API_URL}/api/v1/auth/me",
                 headers={"Authorization": f"Bearer {token}"},
                 timeout=5.0
             )

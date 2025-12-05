@@ -8,10 +8,9 @@ from typing import Optional
 from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Integer
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
-from sqlalchemy.ext.declarative import declarative_base
 import uuid
 
-Base = declarative_base()
+from config.database import Base
 
 class User(Base):
     """User account model"""

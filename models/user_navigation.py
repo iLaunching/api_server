@@ -31,6 +31,7 @@ class UserNavigation(Base):
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
+    user_profile = relationship("UserProfile", back_populates="navigation", foreign_keys=[user_profile_id])
     smart_hub = relationship("SmartHub", foreign_keys=[current_smart_hub_id])
     
     def __repr__(self):
@@ -65,33 +66,34 @@ class UserNavigation(Base):
     
     @classmethod
     async def get_by_user_id(cls, db: AsyncSession, user_id: uuid.UUID) -> Optional["UserNavigation"]:
-        """Get navigation record by user_id (looks up user_profile first)."""
-        # First get the user_profile_id from users table
-        from models.user import UserProfile
-        stmt = select(UserProfile).where(UserProfile.user_id == user_id)
-        result = await db.execute(stmt)
-        user_profile = result.scalar_one_or_none()
+        """Get navigation record by user_id (uses User.profile relationship)."""
+        from models.user import User, UserProfile
         
-        if not user_profile:
-            return None
-            
-        return await cls.get_by_user_profile_id(db, user_profile.id)
+        # Use join with User and UserProfile relationships
+        stmt = (
+            select(cls)
+            .join(cls.user_profile)
+            .join(User, User.id == UserProfile.user_id)
+            .where(User.id == user_id)
+        )
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
     
     @classmethod
     async def get_or_create(cls, db: AsyncSession, user_id: uuid.UUID) -> "UserNavigation":
         """Get existing navigation record or create new one (by user_id)."""
         navigation = await cls.get_by_user_id(db, user_id)
         if not navigation:
-            # Get user_profile_id first
-            from models.user import UserProfile
-            stmt = select(UserProfile).where(UserProfile.user_id == user_id)
+            # Get user with profile relationship loaded
+            from models.user import User
+            stmt = select(User).where(User.id == user_id)
             result = await db.execute(stmt)
-            user_profile = result.scalar_one_or_none()
+            user = result.scalar_one_or_none()
             
-            if not user_profile:
-                raise ValueError(f"No user_profile found for user_id {user_id}")
+            if not user or not user.profile:
+                raise ValueError(f"No user or user_profile found for user_id {user_id}")
             
-            navigation = await cls.create(db=db, user_profile_id=user_profile.id)
+            navigation = await cls.create(db=db, user_profile_id=user.profile.id)
         return navigation
     
     async def update_current_hub(self, db: AsyncSession, smart_hub_id: uuid.UUID):

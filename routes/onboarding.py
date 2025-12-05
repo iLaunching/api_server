@@ -2,7 +2,9 @@
 Onboarding API routes for creating Smart Hub and Smart Matrix during user onboarding.
 """
 
+import os
 import uuid
+import httpx
 from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
@@ -17,6 +19,37 @@ from auth.middleware import get_current_session
 logger = structlog.get_logger()
 
 router = APIRouter(prefix="/api/v1/onboarding", tags=["onboarding"])
+
+# Auth API URL
+AUTH_API_URL = os.getenv("AUTH_API_URL", "https://auth-server-production-b51c.up.railway.app")
+
+
+async def update_user_onboarding_status(user_id: uuid.UUID, session_data: dict):
+    """Update user's onboarding_completed status in auth-api"""
+    try:
+        access_token = session_data.get("access_token")
+        if not access_token:
+            logger.warning("No access token available for onboarding status update")
+            return
+            
+        async with httpx.AsyncClient() as client:
+            response = await client.patch(
+                f"{AUTH_API_URL}/api/v1/profile/onboarding",
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=5.0
+            )
+            
+            if response.status_code == 200:
+                logger.info("User onboarding status updated", user_id=str(user_id))
+            else:
+                logger.warning("Failed to update onboarding status", 
+                             user_id=str(user_id), 
+                             status=response.status_code,
+                             response=response.text)
+                
+    except Exception as e:
+        # Don't fail the onboarding if this fails - just log it
+        logger.error("Error updating onboarding status", user_id=str(user_id), error=str(e))
 
 
 class OnboardingRequest(BaseModel):
@@ -173,6 +206,9 @@ async def create_matrix_step(
             "onboarding_date": datetime.utcnow().isoformat()
         })
         await db.commit()
+        
+        # Update user's onboarding status in auth-api
+        await update_user_onboarding_status(user_id, session_data)
         
         return OnboardingResponse(
             success=True,

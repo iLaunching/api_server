@@ -4,40 +4,95 @@ Authentication and session management middleware.
 
 import os
 import uuid
+import httpx
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Dict
 from fastapi import HTTPException, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import structlog
 
 logger = structlog.get_logger()
 
-# Simple session-based auth for now (can be enhanced with JWT later)
+# Bearer token security
 security = HTTPBearer(auto_error=False)
 
-async def get_current_session(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> str:
-    """Extract and validate session ID from Bearer token"""
+# Auth API URL
+AUTH_API_URL = os.getenv("AUTH_API_URL", "https://ilaunching-servers-production-auth.up.railway.app")
+
+async def get_current_session(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> Dict:
+    """
+    Validate JWT token with auth-api and return user session data.
+    This calls the auth-api /api/auth/me endpoint to validate the token.
+    """
     
     if not credentials:
+        logger.warning("No authorization credentials provided")
         raise HTTPException(
             status_code=401,
             detail="Missing authorization token",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    session_id = credentials.credentials
+    token = credentials.credentials
+    logger.info("Validating token with auth-api", auth_api_url=AUTH_API_URL)
     
-    # Validate UUID format for session ID
+    # Validate token with auth-api
     try:
-        uuid.UUID(session_id)
-    except ValueError:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{AUTH_API_URL}/api/v1/auth/me",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=5.0
+            )
+            
+            logger.info("Auth API response", status=response.status_code)
+            
+            if response.status_code == 401:
+                logger.warning("Token validation failed - 401 from auth-api")
+                raise HTTPException(
+                    status_code=401,
+                    detail="Invalid or expired token",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+            
+            if response.status_code != 200:
+                logger.error("Auth API error", status=response.status_code, response=response.text)
+                raise HTTPException(
+                    status_code=401,
+                    detail="Failed to validate token",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+            
+            user_data = response.json()
+            logger.info("Token validated successfully", user_id=user_data["user"]["id"])
+            
+            # Return session data with user_id and token
+            return {
+                "user_id": user_data["user"]["id"],
+                "email": user_data["user"]["email"],
+                "first_name": user_data["user"].get("first_name"),
+                "last_name": user_data["user"].get("last_name"),
+                "access_token": token,  # Include token for subsequent API calls
+            }
+            
+    except httpx.TimeoutException:
+        logger.error("Auth API timeout")
+        raise HTTPException(
+            status_code=503,
+            detail="Authentication service unavailable",
+        )
+    except httpx.RequestError as e:
+        logger.error("Auth API request error", error=str(e))
+        raise HTTPException(
+            status_code=503,
+            detail="Authentication service unavailable",
+        )
+    except Exception as e:
+        logger.error("Unexpected auth error", error=str(e))
         raise HTTPException(
             status_code=401,
-            detail="Invalid session ID format",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail="Authentication failed",
         )
-    
-    return session_id
 
 def validate_bubble_request(request: Request) -> bool:
     """

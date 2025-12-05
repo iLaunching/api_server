@@ -4,7 +4,7 @@ Business AI Advisor - API Server
 FastAPI-based server for AI-powered business analysis, streaming, and theme management.
 Authentication handled by separate AUTH-API service.
 
-Version 2.0.0 - Business Logic Only
+Version 2.0.1 - JWT Authentication Integration
 """
 
 import os

@@ -31,7 +31,7 @@ class UserNavigation(Base):
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
-    user_profile = relationship("UserProfile", back_populates="navigation", foreign_keys=[user_profile_id])
+    user_profile = relationship("UserProfile", foreign_keys=[user_profile_id])
     smart_hub = relationship("SmartHub", foreign_keys=[current_smart_hub_id])
     
     def __repr__(self):
@@ -92,12 +92,12 @@ class UserNavigation(Base):
         if not user or not user.profile:
             raise ValueError(f"No user or user_profile found for user_id {user_id}")
         
-        # Access navigation directly through relationship
-        if user.profile.navigation:
-            return user.profile.navigation
+        # Check if navigation exists for this profile
+        navigation = await cls.get_by_user_profile_id(db, user.profile.id)
+        if not navigation:
+            # Create if doesn't exist
+            navigation = await cls.create(db=db, user_profile_id=user.profile.id)
         
-        # Create if doesn't exist
-        navigation = await cls.create(db=db, user_profile_id=user.profile.id)
         return navigation
     
     async def update_current_hub(self, db: AsyncSession, smart_hub_id: uuid.UUID):

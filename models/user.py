@@ -109,7 +109,7 @@ class UserProfile(Base):
     
     # Relationships
     user = relationship("User", back_populates="profile")
-    navigation = relationship("UserNavigation", back_populates="user_profile", uselist=False, cascade="all, delete-orphan")
+    # UserNavigation relationship - defined without back_populates to avoid circular import
     
     def __repr__(self):
         return f"<UserProfile(id={self.id}, user_id={self.user_id})>"

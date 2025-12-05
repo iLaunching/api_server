@@ -14,7 +14,6 @@ import structlog
 
 from config.database import get_db
 from models.database_models import SmartHub, SmartMatrix
-from models.user_navigation import UserNavigation
 from auth.middleware import get_current_session
 
 logger = structlog.get_logger()
@@ -77,14 +76,12 @@ async def complete_onboarding(
     session_data: dict = Depends(get_current_session)
 ):
     """
-    Complete onboarding by creating user navigation, Smart Hub, and Smart Matrix.
+    Complete onboarding by creating Smart Hub and Smart Matrix.
     
     Steps:
-    1. Create user_navigation record (if not exists)
-    2. Create Smart Hub with name and color
-    3. Create Smart Matrix linked to the hub
-    4. Set current Smart Hub in navigation
-    5. Store marketing option in hub settings
+    1. Create Smart Hub with name and color
+    2. Create Smart Matrix linked to the hub
+    3. Store marketing option in hub settings
     
     Each step will return progress updates.
     """
@@ -92,11 +89,7 @@ async def complete_onboarding(
         user_id = uuid.UUID(session_data.get("user_id"))
         logger.info("Starting onboarding", user_id=str(user_id), hub_name=request.hub_name)
         
-        # Step 1: Create user_navigation record (if not exists)
-        navigation = await UserNavigation.get_or_create(db, user_id)
-        logger.info("User navigation ready", user_id=str(user_id), navigation_id=str(navigation.id))
-        
-        # Step 2: Create Smart Hub
+        # Step 1: Create Smart Hub
         hub = await SmartHub.create(
             db=db,
             owner_id=user_id,
@@ -113,7 +106,7 @@ async def complete_onboarding(
         
         logger.info("Smart hub created", hub_id=str(hub.id), user_id=str(user_id))
         
-        # Step 3: Create Smart Matrix
+        # Step 2: Create Smart Matrix
         matrix = await SmartMatrix.create(
             db=db,
             smart_hub_id=hub.id,
@@ -123,13 +116,6 @@ async def complete_onboarding(
         )
         
         logger.info("Smart matrix created", matrix_id=str(matrix.id), hub_id=str(hub.id))
-        
-        # Step 4: Set current Smart Hub in navigation
-        await navigation.update_current_hub(db, hub.id)
-        logger.info("Current Smart Hub set in navigation", user_id=str(user_id), hub_id=str(hub.id))
-        
-        # Step 5: Update user's onboarding status in auth-api
-        await update_user_onboarding_status(user_id, session_data)
         
         return OnboardingResponse(
             success=True,
@@ -145,3 +131,95 @@ async def complete_onboarding(
             status_code=500,
             detail=f"Failed to complete onboarding: {str(e)}"
         )
+
+
+@router.post("/create-hub", response_model=OnboardingResponse)
+async def create_hub_step(
+    hub_name: str,
+    hub_color_id: int,
+    db: AsyncSession = Depends(get_db),
+    session_data: dict = Depends(get_current_session)
+):
+    """
+    Step 1: Create Smart Hub only.
+    Returns hub_id to use for subsequent steps.
+    """
+    try:
+        user_id = uuid.UUID(session_data.get("user_id"))
+        
+        hub = await SmartHub.create(
+            db=db,
+            owner_id=user_id,
+            name=hub_name,
+            hub_color=str(hub_color_id),
+            is_default=True,
+            order_number=0,
+            settings={"onboarding_in_progress": True}
+        )
+        
+        return OnboardingResponse(
+            success=True,
+            hub_id=str(hub.id),
+            matrix_id="",
+            message=f"Smart Hub '{hub_name}' created",
+            step="hub_created"
+        )
+        
+    except Exception as e:
+        logger.error("Hub creation failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/create-matrix", response_model=OnboardingResponse)
+async def create_matrix_step(
+    hub_id: str,
+    matrix_name: str,
+    marketing_option_id: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+    session_data: dict = Depends(get_current_session)
+):
+    """
+    Step 2: Create Smart Matrix for the hub.
+    """
+    try:
+        user_id = uuid.UUID(session_data.get("user_id"))
+        hub_uuid = uuid.UUID(hub_id)
+        
+        # Verify hub exists and belongs to user
+        hub = await SmartHub.get_by_id(db, hub_uuid)
+        if not hub or hub.owner_id != user_id:
+            raise HTTPException(status_code=404, detail="Smart Hub not found")
+        
+        # Create matrix
+        matrix = await SmartMatrix.create(
+            db=db,
+            smart_hub_id=hub_uuid,
+            owner_id=user_id,
+            name=matrix_name,
+            order_number=0
+        )
+        
+        # Update hub settings
+        hub.settings.update({
+            "marketing_source_id": marketing_option_id,
+            "onboarding_completed": True,
+            "onboarding_date": datetime.utcnow().isoformat()
+        })
+        await db.commit()
+        
+        # Update user's onboarding status in auth-api
+        await update_user_onboarding_status(user_id, session_data)
+        
+        return OnboardingResponse(
+            success=True,
+            hub_id=str(hub.id),
+            matrix_id=str(matrix.id),
+            message=f"Smart Matrix '{matrix_name}' created",
+            step="complete"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Matrix creation failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))

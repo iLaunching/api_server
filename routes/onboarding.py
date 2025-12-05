@@ -93,12 +93,8 @@ async def complete_onboarding(
         logger.info("Starting onboarding", user_id=str(user_id), hub_name=request.hub_name)
         
         # Step 1: Create user_navigation record (if not exists)
-        navigation = await UserNavigation.get_by_user_id(db, user_id)
-        if not navigation:
-            navigation = await UserNavigation.create(db=db, user_id=user_id)
-            logger.info("User navigation created during onboarding", user_id=str(user_id))
-        else:
-            logger.info("User navigation already exists", user_id=str(user_id))
+        navigation = await UserNavigation.get_or_create(db, user_id)
+        logger.info("User navigation ready", user_id=str(user_id), navigation_id=str(navigation.id))
         
         # Step 2: Create Smart Hub
         hub = await SmartHub.create(

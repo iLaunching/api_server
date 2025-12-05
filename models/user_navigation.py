@@ -82,18 +82,22 @@ class UserNavigation(Base):
     @classmethod
     async def get_or_create(cls, db: AsyncSession, user_id: uuid.UUID) -> "UserNavigation":
         """Get existing navigation record or create new one (by user_id)."""
-        navigation = await cls.get_by_user_id(db, user_id)
-        if not navigation:
-            # Get user with profile relationship loaded
-            from models.user import User
-            stmt = select(User).where(User.id == user_id)
-            result = await db.execute(stmt)
-            user = result.scalar_one_or_none()
-            
-            if not user or not user.profile:
-                raise ValueError(f"No user or user_profile found for user_id {user_id}")
-            
-            navigation = await cls.create(db=db, user_profile_id=user.profile.id)
+        from models.user import User
+        
+        # Load user with profile relationship
+        stmt = select(User).where(User.id == user_id)
+        result = await db.execute(stmt)
+        user = result.scalar_one_or_none()
+        
+        if not user or not user.profile:
+            raise ValueError(f"No user or user_profile found for user_id {user_id}")
+        
+        # Access navigation directly through relationship
+        if user.profile.navigation:
+            return user.profile.navigation
+        
+        # Create if doesn't exist
+        navigation = await cls.create(db=db, user_profile_id=user.profile.id)
         return navigation
     
     async def update_current_hub(self, db: AsyncSession, smart_hub_id: uuid.UUID):

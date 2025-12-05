@@ -13,6 +13,7 @@ from sqlalchemy.future import select
 import structlog
 
 from config.database import Base
+from models.user import UserProfile
 
 logger = structlog.get_logger()
 
@@ -30,8 +31,8 @@ class UserNavigation(Base):
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    # Relationships (one-way only to avoid circular import)
-    user_profile = relationship("UserProfile", foreign_keys=[user_profile_id])
+    # Relationships
+    user_profile = relationship(UserProfile, foreign_keys=[user_profile_id])
     smart_hub = relationship("SmartHub", foreign_keys=[current_smart_hub_id])
     
     def __repr__(self):

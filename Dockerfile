@@ -1,5 +1,6 @@
 FROM python:3.11-slim
 
+# Force rebuild - JWT auth integration v2.0.1
 WORKDIR /app
 
 # Install system dependencies

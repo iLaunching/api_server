@@ -1,5 +1,5 @@
 -- User Navigation Table Schema
--- Tracks user's current active Smart Hub for quick navigation and memory
+-- Tracks user's current active Smart Hub and other navigation contexts for quick navigation and memory
 
 -- Create user_navigation table
 CREATE TABLE IF NOT EXISTS user_navigation (
@@ -7,7 +7,16 @@ CREATE TABLE IF NOT EXISTS user_navigation (
     
     -- Foreign Keys
     user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    
+    -- Navigation contexts - can be expanded for other features
     current_smart_hub_id UUID REFERENCES smart_hubs(id) ON DELETE SET NULL,
+    -- Future navigation fields can be added here:
+    -- current_project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+    -- current_workspace_id UUID REFERENCES workspaces(id) ON DELETE SET NULL,
+    -- current_view VARCHAR(100),  -- e.g., 'dashboard', 'calendar', 'tasks'
+    
+    -- Additional navigation state (JSONB for flexibility)
+    navigation_state JSONB DEFAULT '{}',
     
     -- Timestamps
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -40,9 +49,10 @@ CREATE TRIGGER trigger_update_user_navigation_updated_at
     EXECUTE FUNCTION update_user_navigation_updated_at();
 
 -- Comments for documentation
-COMMENT ON TABLE user_navigation IS 'Stores user navigation state including current active Smart Hub';
+COMMENT ON TABLE user_navigation IS 'Stores user navigation state including current contexts and view preferences';
 COMMENT ON COLUMN user_navigation.id IS 'Unique identifier for the navigation record';
-COMMENT ON COLUMN user_navigation.user_id IS 'Foreign key to users table (one-to-one relationship)';
+COMMENT ON COLUMN user_navigation.user_id IS 'Foreign key to users table (one-to-one relationship with user_profile)';
 COMMENT ON COLUMN user_navigation.current_smart_hub_id IS 'Current active Smart Hub the user is viewing/working in';
+COMMENT ON COLUMN user_navigation.navigation_state IS 'Flexible JSONB field for storing additional navigation context (views, filters, etc.)';
 COMMENT ON COLUMN user_navigation.created_at IS 'When this navigation record was created';
 COMMENT ON COLUMN user_navigation.updated_at IS 'Last time the navigation state was updated';

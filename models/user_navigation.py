@@ -82,10 +82,11 @@ class UserNavigation(Base):
     @classmethod
     async def get_or_create(cls, db: AsyncSession, user_id: uuid.UUID) -> "UserNavigation":
         """Get existing navigation record or create new one (by user_id)."""
-        from models.user import User
+        from models.user import User, UserProfile
+        from sqlalchemy.orm import selectinload
         
-        # Load user with profile relationship
-        stmt = select(User).where(User.id == user_id)
+        # Load user with profile relationship eagerly
+        stmt = select(User).options(selectinload(User.profile)).where(User.id == user_id)
         result = await db.execute(stmt)
         user = result.scalar_one_or_none()
         

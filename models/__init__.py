@@ -8,6 +8,7 @@ from models.user import UserProfile
 from models.database_models import (
     SmartHub,
     SmartMatrix,
+    UserNavigation,
     AnalysisJob,
     AnalysisResult,
     DataCache,
@@ -23,6 +24,7 @@ __all__ = [
     'ThemeConfig',
     'SmartHub',
     'SmartMatrix',
+    'UserNavigation',
     'AnalysisJob',
     'AnalysisResult',
     'DataCache',

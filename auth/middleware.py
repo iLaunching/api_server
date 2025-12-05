@@ -9,7 +9,11 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict
 from fastapi import HTTPException, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
+
+from config.database import get_db
+from models.user_navigation import UserNavigation
 
 logger = structlog.get_logger()
 
@@ -19,10 +23,13 @@ security = HTTPBearer(auto_error=False)
 # Auth API URL
 AUTH_API_URL = os.getenv("AUTH_API_URL", "https://ilaunching-servers-production-auth.up.railway.app")
 
-async def get_current_session(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> Dict:
+async def get_current_session(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: AsyncSession = Depends(get_db)
+) -> Dict:
     """
     Validate JWT token with auth-api and return user session data.
-    This calls the auth-api /api/auth/me endpoint to validate the token.
+    Creates user_navigation record on first API access (part of signup flow).
     """
     
     if not credentials:
@@ -64,11 +71,18 @@ async def get_current_session(credentials: Optional[HTTPAuthorizationCredentials
                 )
             
             user_data = response.json()
-            logger.info("Token validated successfully", user_id=user_data["user"]["id"])
+            user_id = uuid.UUID(user_data["user"]["id"])
+            logger.info("Token validated successfully", user_id=str(user_id))
+            
+            # Create user_navigation record if it doesn't exist (on first API access after signup)
+            navigation = await UserNavigation.get_by_user_id(db, user_id)
+            if not navigation:
+                navigation = await UserNavigation.create(db=db, user_id=user_id)
+                logger.info("User navigation created on first API access", user_id=str(user_id))
             
             # Return session data with user_id and token
             return {
-                "user_id": user_data["user"]["id"],
+                "user_id": str(user_id),
                 "email": user_data["user"]["email"],
                 "first_name": user_data["user"].get("first_name"),
                 "last_name": user_data["user"].get("last_name"),

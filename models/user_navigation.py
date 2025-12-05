@@ -1,11 +1,12 @@
 """
-User Navigation Model - Tracks current Smart Hub and navigation state
+User Navigation Model - Global navigation system for entire application
+Created on signup - tracks user's current position across all app features
 """
 
 import uuid
 from datetime import datetime
-from typing import Optional, Dict, Any
-from sqlalchemy import Column, ForeignKey, DateTime, JSON
+from typing import Optional
+from sqlalchemy import Column, ForeignKey, DateTime
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,22 +20,25 @@ logger = structlog.get_logger()
 
 class UserNavigation(Base):
     """
-    User Navigation - Tracks current contexts and navigation state.
+    Global Navigation System - One-to-one with user_profile
     
-    Future-proof design that can track:
-    - current_smart_hub_id: Active Smart Hub
-    - navigation_state: JSONB for additional contexts (projects, workspaces, views, filters, etc.)
+    Tracks current position across all application features:
+    - current_smart_hub_id: Current Smart Hub (replaceable)
+    - current_smart_matrix_id: Current Smart Matrix (replaceable)
+    - Future fields: current_design_id, current_project_id, etc.
     
-    One-to-one relationship with users (via user_profile).
+    Created on user signup, not during feature creation.
     """
     __tablename__ = "user_navigation"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    
+    # One-to-one with users
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
     
-    # Navigation contexts
+    # Current navigation contexts (all nullable and replaceable)
     current_smart_hub_id = Column(UUID(as_uuid=True), ForeignKey("smart_hubs.id", ondelete="SET NULL"), nullable=True, index=True)
-    navigation_state = Column(JSON, default=dict, nullable=False)  # Flexible JSONB for future contexts
+    current_smart_matrix_id = Column(UUID(as_uuid=True), ForeignKey("smart_matrices.id", ondelete="SET NULL"), nullable=True, index=True)
     
     # Timestamps
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
@@ -42,9 +46,10 @@ class UserNavigation(Base):
     
     # Relationships
     smart_hub = relationship("SmartHub", foreign_keys=[current_smart_hub_id])
+    smart_matrix = relationship("SmartMatrix", foreign_keys=[current_smart_matrix_id])
     
     def __repr__(self):
-        return f"<UserNavigation(id={self.id}, user_id={self.user_id}, current_smart_hub_id={self.current_smart_hub_id})>"
+        return f"<UserNavigation(id={self.id}, user_id={self.user_id}, hub={self.current_smart_hub_id}, matrix={self.current_smart_matrix_id})>"
     
     def to_dict(self):
         """Convert user navigation to dictionary"""
@@ -52,23 +57,19 @@ class UserNavigation(Base):
             "id": str(self.id),
             "user_id": str(self.user_id),
             "current_smart_hub_id": str(self.current_smart_hub_id) if self.current_smart_hub_id else None,
-            "navigation_state": self.navigation_state or {},
+            "current_smart_matrix_id": str(self.current_smart_matrix_id) if self.current_smart_matrix_id else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
     
     @classmethod
-    async def create(cls, db: AsyncSession, **kwargs) -> "UserNavigation":
-        """Create a new user navigation record."""
-        # Ensure navigation_state has default value if not provided
-        if "navigation_state" not in kwargs:
-            kwargs["navigation_state"] = {}
-        
-        navigation = cls(**kwargs)
+    async def create(cls, db: AsyncSession, user_id: uuid.UUID, **kwargs) -> "UserNavigation":
+        """Create a new user navigation record on signup."""
+        navigation = cls(user_id=user_id, **kwargs)
         db.add(navigation)
         await db.commit()
         await db.refresh(navigation)
-        logger.info("User navigation created", navigation_id=str(navigation.id), user_id=str(navigation.user_id))
+        logger.info("User navigation created on signup", navigation_id=str(navigation.id), user_id=str(user_id))
         return navigation
     
     @classmethod
@@ -86,47 +87,34 @@ class UserNavigation(Base):
             navigation = await cls.create(db=db, user_id=user_id)
         return navigation
     
-    async def update_current_hub(self, db: AsyncSession, smart_hub_id: uuid.UUID):
-        """Update the current Smart Hub for this user."""
+    async def set_current_smart_hub(self, db: AsyncSession, smart_hub_id: uuid.UUID):
+        """Set/replace the current Smart Hub."""
         self.current_smart_hub_id = smart_hub_id
         await db.commit()
         await db.refresh(self)
-        logger.info("Current Smart Hub updated", 
+        logger.info("Current Smart Hub set", 
                    user_id=str(self.user_id), 
                    smart_hub_id=str(smart_hub_id))
     
-    async def update_navigation_state(self, db: AsyncSession, state_updates: Dict[str, Any]):
-        """
-        Update navigation_state JSONB field with new contexts.
-        
-        Examples:
-        - await navigation.update_navigation_state(db, {"current_view": "dashboard"})
-        - await navigation.update_navigation_state(db, {"current_project_id": str(project_uuid)})
-        - await navigation.update_navigation_state(db, {"filters": {"status": "active"}})
-        """
-        if self.navigation_state is None:
-            self.navigation_state = {}
-        
-        # Merge updates into existing state
-        self.navigation_state = {**self.navigation_state, **state_updates}
+    async def set_current_smart_matrix(self, db: AsyncSession, smart_matrix_id: uuid.UUID):
+        """Set/replace the current Smart Matrix."""
+        self.current_smart_matrix_id = smart_matrix_id
         await db.commit()
         await db.refresh(self)
-        logger.info("Navigation state updated", 
+        logger.info("Current Smart Matrix set", 
                    user_id=str(self.user_id), 
-                   state_keys=list(state_updates.keys()))
+                   smart_matrix_id=str(smart_matrix_id))
     
-    def get_navigation_context(self, key: str, default: Any = None) -> Any:
-        """Get a specific value from navigation_state"""
-        if not self.navigation_state:
-            return default
-        return self.navigation_state.get(key, default)
+    async def clear_current_smart_hub(self, db: AsyncSession):
+        """Clear current Smart Hub."""
+        self.current_smart_hub_id = None
+        await db.commit()
+        await db.refresh(self)
+        logger.info("Current Smart Hub cleared", user_id=str(self.user_id))
     
-    async def clear_context(self, db: AsyncSession, key: str):
-        """Remove a specific context from navigation_state"""
-        if self.navigation_state and key in self.navigation_state:
-            del self.navigation_state[key]
-            await db.commit()
-            await db.refresh(self)
-            logger.info("Navigation context cleared", 
-                       user_id=str(self.user_id), 
-                       context_key=key)
+    async def clear_current_smart_matrix(self, db: AsyncSession):
+        """Clear current Smart Matrix."""
+        self.current_smart_matrix_id = None
+        await db.commit()
+        await db.refresh(self)
+        logger.info("Current Smart Matrix cleared", user_id=str(self.user_id))

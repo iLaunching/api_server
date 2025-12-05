@@ -19,8 +19,11 @@ class User(Base):
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email = Column(String(255), unique=True, nullable=False, index=True)
-    password_hash = Column(String(255), nullable=False)
-    name = Column(String(255))
+    password_hash = Column(String(255), nullable=True)  # Nullable for OAuth users
+    first_name = Column(String(255))
+    last_name = Column(String(255))
+    oauth_provider = Column(String(50))
+    oauth_provider_id = Column(String(255))
     role = Column(String(50), default="user")
     subscription_tier = Column(String(50), default="free")
     email_verified = Column(Boolean, default=False)
@@ -37,10 +40,21 @@ class User(Base):
     
     def to_dict(self, include_sensitive=False):
         """Convert user to dictionary (exclude password by default)"""
+        # Construct full name from first_name and last_name
+        name = None
+        if self.first_name and self.last_name:
+            name = f"{self.first_name} {self.last_name}"
+        elif self.first_name:
+            name = self.first_name
+        elif self.last_name:
+            name = self.last_name
+            
         data = {
             "id": str(self.id),
             "email": self.email,
-            "name": self.name,
+            "first_name": self.first_name,
+            "last_name": self.last_name,
+            "name": name,  # Computed field for backwards compatibility
             "role": self.role,
             "subscription_tier": self.subscription_tier,
             "email_verified": self.email_verified,

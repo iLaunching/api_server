@@ -126,7 +126,7 @@ class UserProfile(Base):
     
     # Relationships
     user = relationship("User", back_populates="profile")
-    # navigation relationship added dynamically in models/__init__.py
+    navigation = relationship("UserNavigation", foreign_keys="[UserNavigation.user_profile_id]", uselist=False, viewonly=True)
     
     def __repr__(self):
         return f"<UserProfile(id={self.id}, user_id={self.user_id})>"

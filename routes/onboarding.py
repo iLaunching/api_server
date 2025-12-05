@@ -10,10 +10,13 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 import structlog
 
 from config.database import get_db
-from models.database_models import SmartHub, SmartMatrix
+from models.database_models import SmartHub, SmartMatrix, UserNavigation
+from models.user import User, UserProfile
 from auth.middleware import get_current_session
 
 logger = structlog.get_logger()
@@ -117,6 +120,22 @@ async def complete_onboarding(
         
         logger.info("Smart matrix created", matrix_id=str(matrix.id), hub_id=str(hub.id))
         
+        # Step 3: Update UserNavigation to set current_smart_hub_id using relationships
+        # Load user with profile and navigation relationships
+        result = await db.execute(
+            select(User)
+            .options(selectinload(User.profile).selectinload(UserProfile.navigation))
+            .where(User.id == user_id)
+        )
+        user = result.scalar_one_or_none()
+        
+        if user and user.profile and user.profile.navigation:
+            user.profile.navigation.current_smart_hub_id = hub.id
+            await db.commit()
+            logger.info("User navigation updated via relationships", user_id=str(user_id), hub_id=str(hub.id))
+        else:
+            logger.warning("User, profile, or navigation not found", user_id=str(user_id))
+        
         return OnboardingResponse(
             success=True,
             hub_id=str(hub.id),
@@ -156,6 +175,19 @@ async def create_hub_step(
             order_number=0,
             settings={"onboarding_in_progress": True}
         )
+        
+        # Update UserNavigation to set current_smart_hub_id using relationships
+        result = await db.execute(
+            select(User)
+            .options(selectinload(User.profile).selectinload(UserProfile.navigation))
+            .where(User.id == user_id)
+        )
+        user = result.scalar_one_or_none()
+        
+        if user and user.profile and user.profile.navigation:
+            user.profile.navigation.current_smart_hub_id = hub.id
+            await db.commit()
+            logger.info("User navigation updated via relationships", user_id=str(user_id), hub_id=str(hub.id))
         
         return OnboardingResponse(
             success=True,

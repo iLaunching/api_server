@@ -338,6 +338,7 @@ class ThemeConfig(Base):
     user_button_color = Column(String(9))  # Button background color
     user_button_hover = Column(String(9))  # Button hover state color
     user_button_icon = Column(String(7))  # Button icon color
+    title_menu_color_light = Column(String(7))  # Light title/menu text color
     theme_metadata = Column(JSONB, default={})  # Additional theme properties (renamed from metadata)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     

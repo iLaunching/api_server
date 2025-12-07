@@ -69,8 +69,9 @@ async def get_current_smart_hub(
                 # Load account type
                 selectinload(UserProfile.account_type),
                 
-                # Load avatar color
-                selectinload(UserProfile.avatar_color),
+                # Load avatar color with theme config
+                selectinload(UserProfile.avatar_color)
+                .selectinload(OptionValue.theme_config),
                 
                 # Load navigation with current smart hub
                 selectinload(UserProfile.navigation)
@@ -185,7 +186,8 @@ async def get_current_smart_hub(
                 "avatar_color": {
                     "id": profile.avatar_color.id,
                     "value_name": profile.avatar_color.value_name,
-                    "display_name": profile.avatar_color.display_name
+                    "display_name": profile.avatar_color.display_name,
+                    "color": profile.avatar_color.theme_config.theme_metadata.get("color", "#4361EE") if profile.avatar_color.theme_config and profile.avatar_color.theme_config.theme_metadata else "#4361EE"
                 } if profile.avatar_color else None
             }
         }

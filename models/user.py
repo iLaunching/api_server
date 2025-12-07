@@ -126,6 +126,9 @@ class UserProfile(Base):
     # iTheme (foreign key to option_values for 'itheme' option set)
     itheme_id = Column(Integer, ForeignKey("option_values.id", ondelete="SET NULL"), nullable=True, index=True)
     
+    # Avatar color (foreign key to option_values for 'smarthub_color_scheme' option set)
+    avatar_color_id = Column(Integer, ForeignKey("option_values.id", ondelete="SET NULL"), nullable=True, index=True)
+    
     # Navigation (one-to-one with user_navigation table)
     user_navigation_id = Column(UUID(as_uuid=True), nullable=True, unique=True, index=True)
     
@@ -143,6 +146,7 @@ class UserProfile(Base):
     account_type = relationship("OptionValue", foreign_keys=[account_type_id])
     appearance = relationship("OptionValue", foreign_keys=[appearance_id])
     itheme = relationship("OptionValue", foreign_keys=[itheme_id])
+    avatar_color = relationship("OptionValue", foreign_keys=[avatar_color_id])
     
     def __repr__(self):
         return f"<UserProfile(id={self.id}, user_id={self.user_id})>"

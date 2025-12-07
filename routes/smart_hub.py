@@ -51,7 +51,7 @@ async def get_current_smart_hub(
         logger.info("Fetching current smart hub via relationship chain", user_id=user_id)
         
         # Step 1: Get UserProfile with ALL related data via eager loading
-        # This loads: user, appearance → theme_config, itheme → theme_config, account_type
+        # This loads: user, appearance → theme_config, itheme → theme_config, account_type, avatar_color
         profile_query = (
             select(UserProfile)
             .options(
@@ -68,6 +68,10 @@ async def get_current_smart_hub(
                 
                 # Load account type
                 selectinload(UserProfile.account_type),
+                
+                # Load avatar color with theme config
+                selectinload(UserProfile.avatar_color)
+                .selectinload(OptionValue.theme_config),
                 
                 # Load navigation with current smart hub
                 selectinload(UserProfile.navigation)
@@ -115,7 +119,8 @@ async def get_current_smart_hub(
                 "user_button_hover": theme_config.user_button_hover or "#ffffff66",
                 "user_button_icon": theme_config.user_button_icon or "#000000",
                 "title_menu_color_light": theme_config.title_menu_color_light or "#d6d6d6",
-                "border_line_color_light": theme_config.border_line_color_light or "#d6d6d680"
+                "border_line_color_light": theme_config.border_line_color_light or "#d6d6d680",
+                "global_button_hover": theme_config.global_button_hover or "#d6d6d64d"
             }
             
             # Add itheme solid_color for MainHeader background
@@ -177,7 +182,13 @@ async def get_current_smart_hub(
                     "id": profile.itheme.id,
                     "value_name": profile.itheme.value_name,
                     "display_name": profile.itheme.display_name
-                } if profile.itheme else None
+                } if profile.itheme else None,
+                "avatar_color": {
+                    "id": profile.avatar_color.id,
+                    "value_name": profile.avatar_color.value_name,
+                    "display_name": profile.avatar_color.display_name,
+                    "color": profile.avatar_color.theme_config.theme_metadata.get("color", "#4361EE") if profile.avatar_color.theme_config and profile.avatar_color.theme_config.theme_metadata else "#4361EE"
+                } if profile.avatar_color else None
             }
         }
         

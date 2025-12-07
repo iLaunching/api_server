@@ -31,10 +31,16 @@ async def seed_appearance():
                 'display_name': 'Sun',
                 'sort_order': 1,
                 'name': 'Sun',
-                'text_color': '#ffffff',
-                'background_color': '#2a2e35',
-                'menu_color': '#3a3f47',
-                'border_line_color': '#62676f'
+                'text_color': '#000000',
+                'background_color': '#FFFFFF',
+                'menu_color': '#FFFFFF',
+                'border_line_color': '#d6d6d6',
+                'header_overlay_color': '#00000080',
+                'user_button_icon': '#000000',
+                'user_button_color': '#ffffff59',
+                'user_button_hover': '#ffffff66',
+                'title_menu_color_light': '#d6d6d6',
+                'border_line_color_light': '#d6d6d659'
             },
             {
                 'value_name': 'moon',
@@ -42,9 +48,15 @@ async def seed_appearance():
                 'sort_order': 2,
                 'name': 'Moon',
                 'text_color': '#d6d6d6',
-                'background_color': '#2f2f2f',
+                'background_color': '#2F2F2F',
                 'menu_color': '#464545',
-                'border_line_color': '#62676f'
+                'border_line_color': '#62676F',
+                'header_overlay_color': '#00000000',
+                'user_button_icon': '#000000',
+                'user_button_color': '#ffffff59',
+                'user_button_hover': '#ffffff66',
+                'title_menu_color_light': '#62676F',
+                'border_line_color_light': '#62676F59'
             },
             {
                 'value_name': 'space',
@@ -52,9 +64,15 @@ async def seed_appearance():
                 'sort_order': 3,
                 'name': 'Space',
                 'text_color': '#ffffff',
-                'background_color': '#2a2e35',
-                'menu_color': '#3a3f47',
-                'border_line_color': '#62676f'
+                'background_color': '#2A2E35',
+                'menu_color': '#3A3F47',
+                'border_line_color': '#62676F',
+                'header_overlay_color': '#00000000',
+                'user_button_icon': '#ffffff',
+                'user_button_color': '#505663',
+                'user_button_hover': '#505663cc',
+                'title_menu_color_light': '#62676F',
+                'border_line_color_light': '#62676F59'
             },
             {
                 'value_name': 'star',
@@ -62,9 +80,15 @@ async def seed_appearance():
                 'sort_order': 4,
                 'name': 'Star',
                 'text_color': '#ffffff',
-                'background_color': '#181b34',
-                'menu_color': '#292f4c',
-                'border_line_color': '#616daa'
+                'background_color': '#181B34',
+                'menu_color': '#292F4C',
+                'border_line_color': '#616daa',
+                'header_overlay_color': '#00000000',
+                'user_button_icon': '#ffffff',
+                'user_button_color': '#181B34',
+                'user_button_hover': '#181B34cc',
+                'title_menu_color_light': '#616daa',
+                'border_line_color_light': '#616daa59'
             }
         ]
         
@@ -81,11 +105,25 @@ async def seed_appearance():
             await conn.execute("""
                 INSERT INTO theme_configs (
                     option_value_id, name, text_color, background_color, 
-                    menu_color, border_line_color, theme_metadata, created_at
+                    menu_color, border_line_color, header_overlay_color,
+                    user_button_color, user_button_hover, user_button_icon,
+                    title_menu_color_light, border_line_color_light, created_at
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, '{}', NOW())
-            """, option_value_id, app['name'], app['text_color'], 
-                 app['background_color'], app['menu_color'], app['border_line_color'])
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+            """, 
+                option_value_id, 
+                app['name'], 
+                app['text_color'], 
+                app['background_color'], 
+                app['menu_color'], 
+                app['border_line_color'],
+                app['header_overlay_color'],
+                app['user_button_color'],
+                app['user_button_hover'],
+                app['user_button_icon'],
+                app['title_menu_color_light'],
+                app['border_line_color_light']
+            )
             
             print(f"  ✅ {app['name']} ({app['value_name']})")
         

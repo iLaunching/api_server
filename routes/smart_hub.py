@@ -104,7 +104,6 @@ async def get_current_smart_hub(
         theme_data = None
         if profile.appearance and profile.appearance.theme_config:
             theme_config = profile.appearance.theme_config
-            appearance_metadata = theme_config.theme_metadata or {}
             
             theme_data = {
                 "header_overlay": theme_config.header_overlay_color,
@@ -112,8 +111,11 @@ async def get_current_smart_hub(
                 "text": theme_config.text_color,
                 "menu": theme_config.menu_color,
                 "border": theme_config.border_line_color,
-                "user_button_color": appearance_metadata.get("user_button_color", "#ffffff59"),
-                "user_button_hover": appearance_metadata.get("user_button_hover", "#ffffff66")
+                "user_button_color": theme_config.user_button_color or "#ffffff59",
+                "user_button_hover": theme_config.user_button_hover or "#ffffff66",
+                "user_button_icon": theme_config.user_button_icon or "#000000",
+                "title_menu_color_light": theme_config.title_menu_color_light or "#d6d6d6",
+                "border_line_color_light": theme_config.border_line_color_light or "#d6d6d680"
             }
             
             # Add itheme solid_color for MainHeader background

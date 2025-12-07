@@ -51,10 +51,13 @@ async def get_current_smart_hub(
         logger.info("Fetching current smart hub via relationship chain", user_id=user_id)
         
         # Step 1: Get UserProfile with ALL related data via eager loading
-        # This loads: appearance → theme_config, itheme → theme_config, account_type
+        # This loads: user, appearance → theme_config, itheme → theme_config, account_type
         profile_query = (
             select(UserProfile)
             .options(
+                # Load user to get first_name and last_name
+                selectinload(UserProfile.user),
+                
                 # Load appearance with theme config
                 selectinload(UserProfile.appearance)
                 .selectinload(OptionValue.theme_config),
@@ -158,8 +161,8 @@ async def get_current_smart_hub(
             "profile": {
                 "id": str(profile.id),
                 "user_id": str(profile.user_id),
-                "first_name": profile.first_name,
-                "surname": profile.surname,
+                "first_name": profile.user.first_name if profile.user else "",
+                "surname": profile.user.last_name if profile.user else "",
                 "timezone": profile.timezone,
                 "language": profile.language,
                 "onboarding_completed": profile.onboarding_completed,

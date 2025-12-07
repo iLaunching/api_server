@@ -6,7 +6,7 @@ API endpoints for Smart Hub management and current user profile
 from typing import Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import selectinload
 import structlog
 
@@ -360,4 +360,71 @@ async def switch_smart_hub(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to switch Smart Hub"
+        )
+
+
+@router.patch("/profile/avatar-color")
+async def update_avatar_color(
+    avatar_color_id: int,
+    session: Dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Update user's avatar color
+    """
+    try:
+        user_id = session.get("user_id")
+        
+        if not user_id:
+            logger.error("No user_id in session")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User ID not found in session"
+            )
+        
+        logger.info("=== UPDATING AVATAR COLOR ===", user_id=user_id, avatar_color_id=avatar_color_id)
+        
+        # Update the avatar_color_id directly using SQL
+        update_query = text("""
+            UPDATE user_profiles 
+            SET avatar_color_id = :avatar_color_id 
+            WHERE user_id = :user_id
+        """)
+        
+        result = await db.execute(
+            update_query,
+            {"avatar_color_id": avatar_color_id, "user_id": user_id}
+        )
+        
+        logger.info("Update executed", rowcount=result.rowcount)
+        
+        if result.rowcount == 0:
+            logger.error("No rows updated - profile not found", user_id=user_id)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User profile not found"
+            )
+        
+        await db.commit()
+        
+        logger.info("=== AVATAR COLOR UPDATED SUCCESSFULLY ===", user_id=user_id, avatar_color_id=avatar_color_id)
+        
+        return {
+            "message": "Avatar color updated successfully",
+            "avatar_color_id": avatar_color_id,
+            "user_id": user_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error("=== FAILED TO UPDATE AVATAR COLOR ===", 
+                    user_id=session.get("user_id"), 
+                    avatar_color_id=avatar_color_id,
+                    error=str(e),
+                    error_type=type(e).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update avatar color: {str(e)}"
         )

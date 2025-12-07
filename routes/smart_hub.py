@@ -101,12 +101,16 @@ async def get_current_smart_hub(
         theme_data = None
         if profile.appearance and profile.appearance.theme_config:
             theme_config = profile.appearance.theme_config
+            appearance_metadata = theme_config.theme_metadata or {}
+            
             theme_data = {
                 "header_overlay": theme_config.header_overlay_color,
                 "background": theme_config.background_color,
                 "text": theme_config.text_color,
                 "menu": theme_config.menu_color,
-                "border": theme_config.border_line_color
+                "border": theme_config.border_line_color,
+                "user_button_color": appearance_metadata.get("user_button_color", "#ffffff59"),
+                "user_button_hover": appearance_metadata.get("user_button_hover", "#ffffff66")
             }
             
             # Add itheme solid_color for MainHeader background
@@ -154,6 +158,8 @@ async def get_current_smart_hub(
             "profile": {
                 "id": str(profile.id),
                 "user_id": str(profile.user_id),
+                "first_name": profile.first_name,
+                "surname": profile.surname,
                 "timezone": profile.timezone,
                 "language": profile.language,
                 "onboarding_completed": profile.onboarding_completed,

@@ -335,6 +335,9 @@ class ThemeConfig(Base):
     menu_color = Column(String(7), nullable=False)  # Hex color code
     border_line_color = Column(String(7), nullable=False)  # Hex color code
     header_overlay_color = Column(String(9))  # Hex color code with alpha (RRGGBBAA)
+    user_button_color = Column(String(9))  # Button background color
+    user_button_hover = Column(String(9))  # Button hover state color
+    user_button_icon = Column(String(7))  # Button icon color
     theme_metadata = Column(JSONB, default={})  # Additional theme properties (renamed from metadata)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     

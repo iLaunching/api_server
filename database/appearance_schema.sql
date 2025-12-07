@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS theme_configs (
     background_color VARCHAR(7) NOT NULL,
     menu_color VARCHAR(7) NOT NULL,
     border_line_color VARCHAR(7) NOT NULL,
+    header_overlay_color VARCHAR(9),
     theme_metadata JSONB DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -79,11 +80,11 @@ BEGIN
     SELECT id INTO star_value_id FROM option_values WHERE option_set_id = appearance_set_id AND value_name = 'star';
     
     -- Insert theme configurations with final hardcoded colors
-    INSERT INTO theme_configs (option_value_id, name, text_color, background_color, menu_color, border_line_color) VALUES 
-        (sun_value_id, 'Sun', '#ffffff', '#2a2e35', '#3a3f47', '#62676f'),
-        (moon_value_id, 'Moon', '#d6d6d6', '#2f2f2f', '#464545', '#62676f'),
-        (space_value_id, 'Space', '#ffffff', '#2a2e35', '#3a3f47', '#62676f'),
-        (star_value_id, 'Star', '#ffffff', '#181b34', '#292f4c', '#616daa')
+    INSERT INTO theme_configs (option_value_id, name, text_color, background_color, menu_color, border_line_color, header_overlay_color) VALUES 
+        (sun_value_id, 'Sun', '#ffffff', '#2a2e35', '#3a3f47', '#62676f', '#00000080'),
+        (moon_value_id, 'Moon', '#d6d6d6', '#2f2f2f', '#464545', '#62676f', '#00000000'),
+        (space_value_id, 'Space', '#ffffff', '#2a2e35', '#3a3f47', '#62676f', '#00000000'),
+        (star_value_id, 'Star', '#ffffff', '#181b34', '#292f4c', '#616daa', '#00000000')
     ON CONFLICT (option_value_id) DO NOTHING;
     
 END $$;
@@ -101,6 +102,7 @@ RETURNS TABLE(
     background_color VARCHAR,
     menu_color VARCHAR,
     border_line_color VARCHAR,
+    header_overlay_color VARCHAR,
     metadata JSONB
 ) AS $$
 BEGIN
@@ -112,6 +114,7 @@ BEGIN
         tc.background_color,
         tc.menu_color,
         tc.border_line_color,
+        tc.header_overlay_color,
         tc.metadata
     FROM theme_configs tc
     JOIN option_values ov ON tc.option_value_id = ov.id
@@ -131,7 +134,8 @@ RETURNS TABLE(
     text_color VARCHAR,
     background_color VARCHAR,
     menu_color VARCHAR,
-    border_line_color VARCHAR
+    border_line_color VARCHAR,
+    header_overlay_color VARCHAR
 ) AS $$
 BEGIN
     RETURN QUERY
@@ -142,7 +146,8 @@ BEGIN
         tc.text_color,
         tc.background_color,
         tc.menu_color,
-        tc.border_line_color
+        tc.border_line_color,
+        tc.header_overlay_color
     FROM option_values ov
     JOIN option_sets os ON ov.option_set_id = os.id
     LEFT JOIN theme_configs tc ON ov.id = tc.option_value_id
@@ -169,6 +174,7 @@ SELECT
     tc.background_color,
     tc.menu_color,
     tc.border_line_color,
+    tc.header_overlay_color,
     tc.metadata
 FROM option_values ov
 JOIN option_sets os ON ov.option_set_id = os.id
@@ -188,3 +194,4 @@ COMMENT ON COLUMN theme_configs.text_color IS 'Primary text color (hex format: #
 COMMENT ON COLUMN theme_configs.background_color IS 'Main background color (hex format: #RRGGBB)';
 COMMENT ON COLUMN theme_configs.menu_color IS 'Menu/navigation background color (hex format: #RRGGBB)';
 COMMENT ON COLUMN theme_configs.border_line_color IS 'Border and line color (hex format: #RRGGBB)';
+COMMENT ON COLUMN theme_configs.header_overlay_color IS 'Header overlay color with transparency (hex format: #RRGGBBAA)';

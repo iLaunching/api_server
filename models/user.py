@@ -115,11 +115,16 @@ class UserProfile(Base):
     timezone = Column(String(50), default="UTC")
     language = Column(String(10), default="en")
     preferences = Column(JSONB, default={})
-    selected_theme = Column(String(50), default="sun")  # User's selected appearance theme
     onboarding_completed = Column(Boolean, default=False)
     
     # Account type (foreign key to option_values)
     account_type_id = Column(Integer, ForeignKey("option_values.id", ondelete="SET NULL"), nullable=True, index=True)
+    
+    # Appearance theme (foreign key to option_values for 'appearance' option set)
+    appearance_id = Column(Integer, ForeignKey("option_values.id", ondelete="SET NULL"), nullable=True, index=True)
+    
+    # iTheme (foreign key to option_values for 'itheme' option set)
+    itheme_id = Column(Integer, ForeignKey("option_values.id", ondelete="SET NULL"), nullable=True, index=True)
     
     # Navigation (one-to-one with user_navigation table)
     user_navigation_id = Column(UUID(as_uuid=True), nullable=True, unique=True, index=True)
@@ -136,6 +141,8 @@ class UserProfile(Base):
         viewonly=True
     )
     account_type = relationship("OptionValue", foreign_keys=[account_type_id])
+    appearance = relationship("OptionValue", foreign_keys=[appearance_id])
+    itheme = relationship("OptionValue", foreign_keys=[itheme_id])
     
     def __repr__(self):
         return f"<UserProfile(id={self.id}, user_id={self.user_id})>"
@@ -150,6 +157,22 @@ class UserProfile(Base):
                 "display_name": self.account_type.display_name
             }
         
+        appearance_data = None
+        if self.appearance:
+            appearance_data = {
+                "id": self.appearance.id,
+                "value_name": self.appearance.value_name,
+                "display_name": self.appearance.display_name
+            }
+        
+        itheme_data = None
+        if self.itheme:
+            itheme_data = {
+                "id": self.itheme.id,
+                "value_name": self.itheme.value_name,
+                "display_name": self.itheme.display_name
+            }
+        
         return {
             "id": str(self.id),
             "user_id": str(self.user_id),
@@ -159,11 +182,14 @@ class UserProfile(Base):
             "timezone": self.timezone,
             "language": self.language,
             "preferences": self.preferences,
-            "selected_theme": self.selected_theme,
             "onboarding_completed": self.onboarding_completed,
             "user_navigation_id": str(self.user_navigation_id) if self.user_navigation_id else None,
             "account_type_id": self.account_type_id,
             "account_type": account_type_data,
+            "appearance_id": self.appearance_id,
+            "appearance": appearance_data,
+            "itheme_id": self.itheme_id,
+            "itheme": itheme_data,
         }
 
 

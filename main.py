@@ -30,6 +30,7 @@ from routes.status import router as status_router
 from routes.streaming import router as streaming_router
 from routes.appearance import router as appearance_router
 from routes.onboarding import router as onboarding_router
+from routes.smart_hub import router as smart_hub_router
 from services.option_sets_cache import option_sets_cache
 from config.database import init_database, init_redis, close_database, check_database_health, check_redis_health
 
@@ -125,11 +126,12 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
-# Include routers - Business Logic: Analysis + Status + WebSocket streaming + Appearance + Onboarding
+# Include routers - Business Logic: Analysis + Status + WebSocket streaming + Appearance + Onboarding + Smart Hub
 app.include_router(analysis_router, prefix="/api/v1", tags=["analysis"])
 app.include_router(status_router, prefix="/api/v1", tags=["status"])
 app.include_router(streaming_router, prefix="/api/v1", tags=["streaming"])
 app.include_router(appearance_router, prefix="/api/v1", tags=["appearance"])
+app.include_router(smart_hub_router, prefix="/api/v1", tags=["smart-hub"])
 app.include_router(onboarding_router)  # Prefix already in router definition
 
 @app.get("/health")

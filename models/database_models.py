@@ -334,6 +334,7 @@ class ThemeConfig(Base):
     background_color = Column(String(7), nullable=False)  # Hex color code
     menu_color = Column(String(7), nullable=False)  # Hex color code
     border_line_color = Column(String(7), nullable=False)  # Hex color code
+    header_overlay_color = Column(String(9))  # Hex color code with alpha (RRGGBBAA)
     theme_metadata = Column(JSONB, default={})  # Additional theme properties (renamed from metadata)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     
@@ -353,6 +354,7 @@ class ThemeConfig(Base):
             "background_color": self.background_color,
             "menu_color": self.menu_color,
             "border_line_color": self.border_line_color,
+            "header_overlay_color": self.header_overlay_color,
             "metadata": self.theme_metadata,  # Return as 'metadata' in API
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }

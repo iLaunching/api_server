@@ -39,7 +39,8 @@ async def seed_appearance():
                 'user_button_icon': '#000000',
                 'user_button_color': '#ffffff59',
                 'user_button_hover': '#ffffff66',
-                'title_menu_color_light': '#d6d6d6'
+                'title_menu_color_light': '#d6d6d6',
+                'border_line_color_light': '#d6d6d680'
             },
             {
                 'value_name': 'moon',
@@ -54,7 +55,8 @@ async def seed_appearance():
                 'user_button_icon': '#000000',
                 'user_button_color': '#ffffff59',
                 'user_button_hover': '#ffffff66',
-                'title_menu_color_light': '#62676F'
+                'title_menu_color_light': '#62676F',
+                'border_line_color_light': '#62676F80'
             },
             {
                 'value_name': 'space',
@@ -69,7 +71,8 @@ async def seed_appearance():
                 'user_button_icon': '#ffffff',
                 'user_button_color': '#505663',
                 'user_button_hover': '#505663cc',
-                'title_menu_color_light': '#62676F'
+                'title_menu_color_light': '#62676F',
+                'border_line_color_light': '#62676F80'
             },
             {
                 'value_name': 'star',
@@ -84,7 +87,8 @@ async def seed_appearance():
                 'user_button_icon': '#ffffff',
                 'user_button_color': '#181B34',
                 'user_button_hover': '#181B34cc',
-                'title_menu_color_light': '#616daa'
+                'title_menu_color_light': '#616daa',
+                'border_line_color_light': '#616daa80'
             }
         ]
         
@@ -103,9 +107,9 @@ async def seed_appearance():
                     option_value_id, name, text_color, background_color, 
                     menu_color, border_line_color, header_overlay_color,
                     user_button_color, user_button_hover, user_button_icon,
-                    title_menu_color_light, created_at
+                    title_menu_color_light, border_line_color_light, created_at
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
             """, 
                 option_value_id, 
                 app['name'], 
@@ -117,7 +121,8 @@ async def seed_appearance():
                 app['user_button_color'],
                 app['user_button_hover'],
                 app['user_button_icon'],
-                app['title_menu_color_light']
+                app['title_menu_color_light'],
+                app['border_line_color_light']
             )
             
             print(f"  ✅ {app['name']} ({app['value_name']})")

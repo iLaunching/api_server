@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS theme_configs (
     user_button_hover VARCHAR(9),
     user_button_icon VARCHAR(7),
     title_menu_color_light VARCHAR(7),
+    border_line_color_light VARCHAR(9),
     theme_metadata JSONB DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -84,11 +85,11 @@ BEGIN
     SELECT id INTO star_value_id FROM option_values WHERE option_set_id = appearance_set_id AND value_name = 'star';
     
     -- Insert theme configurations with final hardcoded colors and button colors
-    INSERT INTO theme_configs (option_value_id, name, text_color, background_color, menu_color, border_line_color, header_overlay_color, user_button_color, user_button_hover, user_button_icon, title_menu_color_light) VALUES 
-        (sun_value_id, 'Sun', '#000000', '#FFFFFF', '#FFFFFF', '#d6d6d6', '#00000080', '#ffffff59', '#ffffff66', '#000000', '#d6d6d6'),
-        (moon_value_id, 'Moon', '#d6d6d6', '#2F2F2F', '#464545', '#62676F', '#00000000', '#ffffff59', '#ffffff66', '#000000', '#62676F'),
-        (space_value_id, 'Space', '#ffffff', '#2A2E35', '#3A3F47', '#62676F', '#00000000', '#505663', '#505663cc', '#ffffff', '#62676F'),
-        (star_value_id, 'Star', '#ffffff', '#181B34', '#292F4C', '#616daa', '#00000000', '#181B34', '#181B34cc', '#ffffff', '#616daa')
+    INSERT INTO theme_configs (option_value_id, name, text_color, background_color, menu_color, border_line_color, header_overlay_color, user_button_color, user_button_hover, user_button_icon, title_menu_color_light, border_line_color_light) VALUES 
+        (sun_value_id, 'Sun', '#000000', '#FFFFFF', '#FFFFFF', '#d6d6d6', '#00000080', '#ffffff59', '#ffffff66', '#000000', '#d6d6d6', '#d6d6d680'),
+        (moon_value_id, 'Moon', '#d6d6d6', '#2F2F2F', '#464545', '#62676F', '#00000000', '#ffffff59', '#ffffff66', '#000000', '#62676F', '#62676F80'),
+        (space_value_id, 'Space', '#ffffff', '#2A2E35', '#3A3F47', '#62676F', '#00000000', '#505663', '#505663cc', '#ffffff', '#62676F', '#62676F80'),
+        (star_value_id, 'Star', '#ffffff', '#181B34', '#292F4C', '#616daa', '#00000000', '#181B34', '#181B34cc', '#ffffff', '#616daa', '#616daa80')
     ON CONFLICT (option_value_id) DO NOTHING;
     
 END $$;
@@ -203,3 +204,4 @@ COMMENT ON COLUMN theme_configs.user_button_color IS 'User menu button backgroun
 COMMENT ON COLUMN theme_configs.user_button_hover IS 'User menu button hover state color (hex format: #RRGGBB or #RRGGBBAA)';
 COMMENT ON COLUMN theme_configs.user_button_icon IS 'User menu button icon color (hex format: #RRGGBB)';
 COMMENT ON COLUMN theme_configs.title_menu_color_light IS 'Light title/menu text color (hex format: #RRGGBB)';
+COMMENT ON COLUMN theme_configs.border_line_color_light IS 'Light border/line color with transparency (hex format: #RRGGBBAA)';

@@ -81,10 +81,10 @@ BEGIN
     
     -- Insert theme configurations with final hardcoded colors
     INSERT INTO theme_configs (option_value_id, name, text_color, background_color, menu_color, border_line_color, header_overlay_color) VALUES 
-        (sun_value_id, 'Sun', '#ffffff', '#2a2e35', '#3a3f47', '#62676f', '#00000035'),
-        (moon_value_id, 'Moon', '#d6d6d6', '#2f2f2f', '#464545', '#62676f', '#00000030'),
-        (space_value_id, 'Space', '#ffffff', '#2a2e35', '#3a3f47', '#62676f', '#00000038'),
-        (star_value_id, 'Star', '#ffffff', '#181b34', '#292f4c', '#616daa', '#00000040')
+        (sun_value_id, 'Sun', '#ffffff', '#2a2e35', '#3a3f47', '#62676f', '#00000080'),
+        (moon_value_id, 'Moon', '#d6d6d6', '#2f2f2f', '#464545', '#62676f', '#00000000'),
+        (space_value_id, 'Space', '#ffffff', '#2a2e35', '#3a3f47', '#62676f', '#00000000'),
+        (star_value_id, 'Star', '#ffffff', '#181b34', '#292f4c', '#616daa', '#00000000')
     ON CONFLICT (option_value_id) DO NOTHING;
     
 END $$;

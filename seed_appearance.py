@@ -40,7 +40,7 @@ async def seed_appearance():
                 'user_button_color': '#ffffff59',
                 'user_button_hover': '#ffffff66',
                 'title_menu_color_light': '#d6d6d6',
-                'border_line_color_light': '#d6d6d680'
+                'border_line_color_light': '#d6d6d659'
             },
             {
                 'value_name': 'moon',
@@ -56,7 +56,7 @@ async def seed_appearance():
                 'user_button_color': '#ffffff59',
                 'user_button_hover': '#ffffff66',
                 'title_menu_color_light': '#62676F',
-                'border_line_color_light': '#62676F80'
+                'border_line_color_light': '#62676F59'
             },
             {
                 'value_name': 'space',
@@ -72,7 +72,7 @@ async def seed_appearance():
                 'user_button_color': '#505663',
                 'user_button_hover': '#505663cc',
                 'title_menu_color_light': '#62676F',
-                'border_line_color_light': '#62676F80'
+                'border_line_color_light': '#62676F59'
             },
             {
                 'value_name': 'star',
@@ -88,7 +88,7 @@ async def seed_appearance():
                 'user_button_color': '#181B34',
                 'user_button_hover': '#181B34cc',
                 'title_menu_color_light': '#616daa',
-                'border_line_color_light': '#616daa80'
+                'border_line_color_light': '#616daa59'
             }
         ]
         

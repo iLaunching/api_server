@@ -7,10 +7,10 @@ ADD COLUMN IF NOT EXISTS border_line_color_light VARCHAR(9);
 -- Update existing themes with correct values
 UPDATE theme_configs tc
 SET border_line_color_light = CASE 
-    WHEN ov.value_name = 'sun' THEN '#d6d6d680'
-    WHEN ov.value_name = 'moon' THEN '#62676F80'
-    WHEN ov.value_name = 'space' THEN '#62676F80'
-    WHEN ov.value_name = 'star' THEN '#616daa80'
+    WHEN ov.value_name = 'sun' THEN '#d6d6d659'
+    WHEN ov.value_name = 'moon' THEN '#62676F59'
+    WHEN ov.value_name = 'space' THEN '#62676F59'
+    WHEN ov.value_name = 'star' THEN '#616daa59'
 END
 FROM option_values ov
 WHERE tc.option_value_id = ov.id

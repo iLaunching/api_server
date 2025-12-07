@@ -113,7 +113,8 @@ async def get_current_smart_hub(
                 "menu": theme_config.menu_color,
                 "border": theme_config.border_line_color,
                 "user_button_color": appearance_metadata.get("user_button_color", "#ffffff59"),
-                "user_button_hover": appearance_metadata.get("user_button_hover", "#ffffff66")
+                "user_button_hover": appearance_metadata.get("user_button_hover", "#ffffff66"),
+                "user_button_icon": appearance_metadata.get("user_button_icon", "#000000")
             }
             
             # Add itheme solid_color for MainHeader background

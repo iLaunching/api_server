@@ -51,7 +51,7 @@ async def get_current_smart_hub(
         logger.info("Fetching current smart hub via relationship chain", user_id=user_id)
         
         # Step 1: Get UserProfile with ALL related data via eager loading
-        # This loads: user, appearance → theme_config, itheme → theme_config, account_type
+        # This loads: user, appearance → theme_config, itheme → theme_config, account_type, avatar_color
         profile_query = (
             select(UserProfile)
             .options(
@@ -68,6 +68,9 @@ async def get_current_smart_hub(
                 
                 # Load account type
                 selectinload(UserProfile.account_type),
+                
+                # Load avatar color
+                selectinload(UserProfile.avatar_color),
                 
                 # Load navigation with current smart hub
                 selectinload(UserProfile.navigation)
@@ -178,7 +181,12 @@ async def get_current_smart_hub(
                     "id": profile.itheme.id,
                     "value_name": profile.itheme.value_name,
                     "display_name": profile.itheme.display_name
-                } if profile.itheme else None
+                } if profile.itheme else None,
+                "avatar_color": {
+                    "id": profile.avatar_color.id,
+                    "value_name": profile.avatar_color.value_name,
+                    "display_name": profile.avatar_color.display_name
+                } if profile.avatar_color else None
             }
         }
         

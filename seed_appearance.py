@@ -36,7 +36,7 @@ async def seed_appearance():
                 'menu_color': '#FFFFFF',
                 'border_line_color': '#d6d6d6',
                 'header_overlay_color': '#00000080',
-                'user_button_icon': '#ffffff',
+                'user_button_icon': '#000000',
                 'user_button_color': '#ffffff59',
                 'user_button_hover': '#ffffff66'
             },

@@ -307,6 +307,21 @@ class OptionValue(Base):
     option_set = relationship("OptionSet", back_populates="option_values")
     theme_config = relationship("ThemeConfig", back_populates="option_value", uselist=False, cascade="all, delete-orphan")
     
+    # Properties for icon data (from icon_metadata table via direct query)
+    @property
+    def icon_name(self):
+        """Get icon_name from icon_metadata if this is an icon option"""
+        if hasattr(self, '_icon_metadata') and self._icon_metadata:
+            return self._icon_metadata.get('icon_name')
+        return None
+    
+    @property
+    def icon_prefix(self):
+        """Get icon_prefix from icon_metadata if this is an icon option"""
+        if hasattr(self, '_icon_metadata') and self._icon_metadata:
+            return self._icon_metadata.get('icon_prefix')
+        return None
+    
     def __repr__(self):
         return f"<OptionValue(id={self.id}, value_name={self.value_name})>"
     

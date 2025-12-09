@@ -129,6 +129,12 @@ class UserProfile(Base):
     # Avatar color (foreign key to option_values for 'smarthub_color_scheme' option set)
     avatar_color_id = Column(Integer, ForeignKey("option_values.id", ondelete="SET NULL"), nullable=True, index=True)
     
+    # Profile icon (foreign key to option_values for 'icon_library' option set)
+    profile_icon_id = Column(Integer, ForeignKey("option_values.id", ondelete="SET NULL"), nullable=True, index=True)
+    
+    # Avatar display option (24=default/initials, 25=image, 26=icon)
+    avatar_display_option_value_id = Column(Integer, nullable=True, index=True, default=24)
+    
     # Navigation (one-to-one with user_navigation table)
     user_navigation_id = Column(UUID(as_uuid=True), nullable=True, unique=True, index=True)
     
@@ -147,6 +153,7 @@ class UserProfile(Base):
     appearance = relationship("OptionValue", foreign_keys=[appearance_id])
     itheme = relationship("OptionValue", foreign_keys=[itheme_id])
     avatar_color = relationship("OptionValue", foreign_keys=[avatar_color_id])
+    profile_icon = relationship("OptionValue", foreign_keys=[profile_icon_id])
     
     def __repr__(self):
         return f"<UserProfile(id={self.id}, user_id={self.user_id})>"

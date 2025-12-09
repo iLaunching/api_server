@@ -1,0 +1,80 @@
+{
+  "total": 2806,
+  "by_category": {
+    "solid": 1984,
+    "regular": 273,
+    "brands": 549
+  },
+  "icons": [
+    {
+      "iconName": "fa0",
+      "prefix": "fas",
+      "category": "solid",
+      "unicode": "30",
+      "sortOrder": 0
+    },
+    {
+      "iconName": "fa1",
+      "prefix": "fas",
+      "category": "solid",
+      "unicode": "31",
+      "sortOrder": 1
+    },
+    {
+      "iconName": "fa2",
+      "prefix": "fas",
+      "category": "solid",
+      "unicode": "32",
+      "sortOrder": 2
+    },
+    {
+      "iconName": "fa3",
+      "prefix": "fas",
+      "category": "solid",
+      "unicode": "33",
+      "sortOrder": 3
+    },
+    {
+      "iconName": "fa4",
+      "prefix": "fas",
+      "category": "solid",
+      "unicode": "34",
+      "sortOrder": 4
+    },
+    {
+      "iconName": "fa5",
+      "prefix": "fas",
+      "category": "solid",
+      "unicode": "35",
+      "sortOrder": 5
+    },
+    {
+      "iconName": "fa6",
+      "prefix": "fas",
+      "category": "solid",
+      "unicode": "36",
+      "sortOrder": 6
+    },
+    {
+      "iconName": "fa7",
+      "prefix": "fas",
+      "category": "solid",
+      "unicode": "37",
+      "sortOrder": 7
+    },
+    {
+      "iconName": "fa8",
+      "prefix": "fas",
+      "category": "solid",
+      "unicode": "38",
+      "sortOrder": 8
+    },
+    {
+      "iconName": "fa9",
+      "prefix": "fas",
+      "category": "solid",
+      "unicode": "39",
+      "sortOrder": 9
+    }
+  ]
+}

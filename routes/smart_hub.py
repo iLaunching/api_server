@@ -73,6 +73,9 @@ async def get_current_smart_hub(
                 selectinload(UserProfile.avatar_color)
                 .selectinload(OptionValue.theme_config),
                 
+                # Load profile icon
+                selectinload(UserProfile.profile_icon),
+                
                 # Load navigation with current smart hub
                 selectinload(UserProfile.navigation)
                 .selectinload(UserNavigation.current_smart_hub)
@@ -103,6 +106,21 @@ async def get_current_smart_hub(
             await db.commit()
             await db.refresh(navigation, ['current_smart_hub'])
             logger.info("User navigation created", navigation_id=str(navigation.id))
+        
+        # Step 2.5: Load icon metadata if profile has an icon
+        icon_metadata = None
+        if profile.profile_icon_id:
+            icon_result = await db.execute(
+                text("""
+                    SELECT icon_name, icon_prefix
+                    FROM icon_metadata
+                    WHERE option_value_id = :icon_id
+                """),
+                {"icon_id": profile.profile_icon_id}
+            )
+            icon_row = icon_result.fetchone()
+            if icon_row:
+                icon_metadata = {"icon_name": icon_row[0], "icon_prefix": icon_row[1]}
         
         # Step 3: Build theme data from appearance + itheme relations (no search!)
         theme_data = None
@@ -188,7 +206,15 @@ async def get_current_smart_hub(
                     "value_name": profile.avatar_color.value_name,
                     "display_name": profile.avatar_color.display_name,
                     "color": profile.avatar_color.theme_config.theme_metadata.get("color", "#4361EE") if profile.avatar_color.theme_config and profile.avatar_color.theme_config.theme_metadata else "#4361EE"
-                } if profile.avatar_color else None
+                } if profile.avatar_color else None,
+                "avatar_display_option_value_id": profile.avatar_display_option_value_id,
+                "profile_icon": {
+                    "id": profile.profile_icon.id,
+                    "value_name": profile.profile_icon.value_name,
+                    "display_name": profile.profile_icon.display_name,
+                    "icon_name": icon_metadata["icon_name"] if icon_metadata else None,
+                    "icon_prefix": icon_metadata["icon_prefix"] if icon_metadata else None
+                } if profile.profile_icon and icon_metadata else None
             }
         }
         

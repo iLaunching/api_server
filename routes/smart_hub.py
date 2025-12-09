@@ -451,10 +451,11 @@ async def update_profile_icon(
         
         logger.info("=== UPDATING PROFILE ICON ===", user_id=user_id, profile_icon_id=profile_icon_id)
         
-        # Update the profile_icon_id directly using SQL
+        # Update the profile_icon_id and set avatar_display_option to 'icon' (ID: 26)
         update_query = text("""
             UPDATE user_profiles 
-            SET profile_icon_id = :profile_icon_id 
+            SET profile_icon_id = :profile_icon_id,
+                avatar_display_option_value_id = 26
             WHERE user_id = :user_id
         """)
         

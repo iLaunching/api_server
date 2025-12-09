@@ -145,6 +145,8 @@ async def get_current_smart_hub(
             if profile.itheme and profile.itheme.theme_config:
                 itheme_metadata = profile.itheme.theme_config.theme_metadata or {}
                 theme_data["header_background"] = itheme_metadata.get("solid_color", "#7F77F1")  # Default to ipurple
+                theme_data["tone_button_bk_color"] = itheme_metadata.get("toneButton_bk_color", "#7F77F166")
+                theme_data["tone_button_text_color"] = itheme_metadata.get("toneButton_text_color", "#6B63DD")
                 logger.info("Theme data loaded", 
                            appearance_name=profile.appearance.value_name,
                            itheme_name=profile.itheme.value_name,

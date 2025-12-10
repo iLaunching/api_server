@@ -41,10 +41,15 @@ class OptionSetsCache:
                         tc.background_color,
                         tc.menu_color,
                         tc.border_line_color,
-                        tc.theme_metadata as metadata
+                        tc.theme_metadata as metadata,
+                        im.icon_name,
+                        im.icon_prefix,
+                        im.icon_category,
+                        im.unicode as icon_unicode
                     FROM option_sets os
                     JOIN option_values ov ON os.id = ov.option_set_id
                     LEFT JOIN theme_configs tc ON ov.id = tc.option_value_id
+                    LEFT JOIN icon_metadata im ON ov.id = im.option_value_id
                     WHERE ov.is_active = true
                     ORDER BY os.name, ov.sort_order
                 """)
@@ -55,6 +60,18 @@ class OptionSetsCache:
                 # Build the options cache (all option values from all option sets)
                 for row in rows:
                     option_key = row.value_name
+                    
+                    # Build metadata - combine theme_metadata and icon metadata
+                    metadata = row.metadata or {}
+                    if row.icon_name:
+                        # This is an icon, add icon metadata
+                        metadata.update({
+                            'icon_name': row.icon_name,
+                            'icon_prefix': row.icon_prefix,
+                            'icon_category': row.icon_category or 'general',
+                            'unicode': row.icon_unicode
+                        })
+                    
                     self._options_cache[option_key] = {
                         'option_value_id': row.option_value_id,
                         'set_name': row.set_name,
@@ -67,7 +84,7 @@ class OptionSetsCache:
                         'background_color': row.background_color,
                         'menu_color': row.menu_color,
                         'border_line_color': row.border_line_color,
-                        'metadata': row.metadata or {}
+                        'metadata': metadata
                     }
                 
                 # Load option sets

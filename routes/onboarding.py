@@ -97,7 +97,7 @@ async def complete_onboarding(
             db=db,
             owner_id=user_id,
             name=request.hub_name,
-            hub_color=str(request.hub_color_id),
+            hub_color_id=request.hub_color_id,
             is_default=True,  # First hub is always default
             order_number=0,
             settings={
@@ -170,7 +170,7 @@ async def create_hub_step(
             db=db,
             owner_id=user_id,
             name=hub_name,
-            hub_color=str(hub_color_id),
+            hub_color_id=hub_color_id,
             is_default=True,
             order_number=0,
             settings={"onboarding_in_progress": True}

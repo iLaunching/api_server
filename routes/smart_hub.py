@@ -76,9 +76,11 @@ async def get_current_smart_hub(
                 # Load profile icon
                 selectinload(UserProfile.profile_icon),
                 
-                # Load navigation with current smart hub
+                # Load navigation with current smart hub and its color
                 selectinload(UserProfile.navigation)
                 .selectinload(UserNavigation.current_smart_hub)
+                .selectinload(SmartHub.hub_color)
+                .selectinload(OptionValue.theme_config)
             )
             .where(UserProfile.user_id == user_id)
         )
@@ -164,12 +166,27 @@ async def get_current_smart_hub(
         smart_hub_data = None
         if navigation.current_smart_hub:
             hub = navigation.current_smart_hub
+            
+            # Extract hub color from relationship
+            hub_color = None
+            try:
+                if hasattr(hub, 'hub_color') and hub.hub_color and hasattr(hub.hub_color, 'theme_config'):
+                    if hub.hub_color.theme_config and hasattr(hub.hub_color.theme_config, 'theme_metadata'):
+                        hub_color = hub.hub_color.theme_config.theme_metadata.get("color", "#7F77F1")
+            except AttributeError as e:
+                logger.warning("Could not extract hub color", error=str(e))
+                hub_color = "#7F77F1"  # Default fallback
+            
+            if not hub_color:
+                hub_color = "#7F77F1"  # Default if extraction failed
+            
             smart_hub_data = {
                 "id": str(hub.id),
                 "name": hub.name,
                 "description": hub.description,
                 "avatar": hub.avatar,
-                "hub_color": hub.hub_color,
+                "hub_color": hub_color,
+                "hub_color_id": hub.hub_color_id,
                 "owner_id": str(hub.owner_id),
                 "is_default": hub.is_default,
                 "created_at": hub.created_at.isoformat() if hub.created_at else None,

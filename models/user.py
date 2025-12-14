@@ -155,6 +155,13 @@ class UserProfile(Base):
     avatar_color = relationship("OptionValue", foreign_keys=[avatar_color_id])
     profile_icon = relationship("OptionValue", foreign_keys=[profile_icon_id])
     
+    # Smart Hubs - one-to-many relationship through user_id
+    smart_hubs = relationship(
+        "SmartHub",
+        primaryjoin="foreign(SmartHub.owner_id) == UserProfile.user_id",
+        viewonly=True
+    )
+    
     def __repr__(self):
         return f"<UserProfile(id={self.id}, user_id={self.user_id})>"
     

@@ -268,3 +268,23 @@ async def get_marketing_options():
     except Exception as e:
         logger.error("Failed to get marketing options", error=str(e))
         raise HTTPException(status_code=500, detail="Failed to retrieve marketing options")
+
+@router.get("/use-case-options")
+async def get_use_case_options():
+    """Get all available Smart Hub use case options"""
+    try:
+        options = option_sets_cache.get_options_by_set('smart_hub_use_case')
+        
+        # Sort by sort_order
+        options_sorted = sorted(options, key=lambda x: x.get('sort_order', 0))
+        
+        logger.info("Use case options retrieved", count=len(options_sorted))
+        
+        return {
+            "options": options_sorted,
+            "count": len(options_sorted)
+        }
+        
+    except Exception as e:
+        logger.error("Failed to get use case options", error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to retrieve use case options")

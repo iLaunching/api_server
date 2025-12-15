@@ -121,10 +121,10 @@ class UserProfile(Base):
     account_type_id = Column(Integer, ForeignKey("option_values.id", ondelete="SET NULL"), nullable=True, index=True)
     
     # Appearance theme (foreign key to option_values for 'appearance' option set)
-    appearance_id = Column(Integer, ForeignKey("option_values.id", ondelete="SET NULL"), nullable=True, index=True)
+    appearance_id = Column(Integer, ForeignKey("option_values.id", ondelete="SET NULL"), nullable=True, index=True, default=6)
     
     # iTheme (foreign key to option_values for 'itheme' option set)
-    itheme_id = Column(Integer, ForeignKey("option_values.id", ondelete="SET NULL"), nullable=True, index=True)
+    itheme_id = Column(Integer, ForeignKey("option_values.id", ondelete="SET NULL"), nullable=True, index=True, default=10)
     
     # Avatar color (foreign key to option_values for 'smarthub_color_scheme' option set)
     avatar_color_id = Column(Integer, ForeignKey("option_values.id", ondelete="SET NULL"), nullable=True, index=True)

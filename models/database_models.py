@@ -394,7 +394,7 @@ class SmartHub(Base):
     avatar = Column(Text)  # Avatar image/icon for the hub
     hub_color_id = Column(Integer, ForeignKey("option_values.id", ondelete="SET NULL"), nullable=True, index=True)  # FK to smarthub_color_scheme option set
     order_number = Column(Integer, default=0)  # Display order for user's hubs
-    subscription_tier = Column(String(50), default="Validate Journey")  # Per-hub subscription tier
+    journey = Column(String(50), default="Validate Journey")  # Per-hub journey tier
     
     # Hub status
     is_active = Column(Boolean, default=True, index=True)

@@ -191,7 +191,7 @@ async def get_current_smart_hub(
                 "avatar": hub.avatar,
                 "hub_color": hub_color,
                 "hub_color_id": hub.hub_color_id,
-                "subscription_tier": hub.subscription_tier or "Validate Journey",  # Per-hub subscription tier
+                "journey": hub.journey or "Validate Journey",  # Per-hub journey tier
                 "owner_id": str(hub.owner_id),
                 "is_default": hub.is_default,
                 "created_at": hub.created_at.isoformat() if hub.created_at else None,

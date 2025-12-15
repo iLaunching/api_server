@@ -191,6 +191,7 @@ async def get_current_smart_hub(
                 "avatar": hub.avatar,
                 "hub_color": hub_color,
                 "hub_color_id": hub.hub_color_id,
+                "subscription_tier": hub.subscription_tier or "Validate Journey",  # Per-hub subscription tier
                 "owner_id": str(hub.owner_id),
                 "is_default": hub.is_default,
                 "created_at": hub.created_at.isoformat() if hub.created_at else None,
@@ -237,7 +238,6 @@ async def get_current_smart_hub(
                 "user_id": str(profile.user_id),
                 "first_name": profile.user.first_name if profile.user else "",
                 "surname": profile.user.last_name if profile.user else "",
-                "subscription_tier": profile.user.subscription_tier if profile.user else "free",
                 "timezone": profile.timezone,
                 "language": profile.language,
                 "onboarding_completed": profile.onboarding_completed,

@@ -24,6 +24,7 @@ class User(Base):
     oauth_provider = Column(String(50))
     oauth_provider_id = Column(String(255))
     role = Column(String(50), default="user")
+    membership = Column(String(50), default="Individual")  # Individual or Enterprise
     email_verified = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)

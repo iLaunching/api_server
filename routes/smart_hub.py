@@ -225,7 +225,8 @@ async def get_current_smart_hub(
                     "id": str(hub.id),
                     "name": hub.name,
                     "hub_color_id": hub.hub_color_id,
-                    "color": hub_color_value
+                    "color": hub_color_value,
+                    "journey": hub.journey or "Validate Journey"
                 })
         
         logger.info("Smart hubs loaded", count=len(smart_hubs_list))

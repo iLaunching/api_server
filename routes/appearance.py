@@ -267,13 +267,26 @@ async def get_option_values_by_set(
                 "sort_order": ov.sort_order,
             }
             
-            # Add theme_config if it exists
-            if ov.theme_config:
+            # Add theme_config if it exists (for appearance)
+            if ov.theme_config and option_set_name == "appearance":
                 value_dict["theme_config"] = {
                     "text_color": ov.theme_config.text_color,
                     "background_color": ov.theme_config.background_color,
                     "menu_color": ov.theme_config.menu_color,
                     "border_line_color": ov.theme_config.border_line_color,
+                }
+            
+            # Add itheme_config if it exists (for itheme)
+            if ov.theme_config and option_set_name == "itheme":
+                metadata = ov.theme_config.theme_metadata or {}
+                value_dict["itheme_config"] = {
+                    "name": ov.theme_config.name,
+                    "bg_opacity": metadata.get("bg_opacity", ""),
+                    "bg_gradient": metadata.get("bg_gradient", ""),
+                    "hover_color": metadata.get("hover_color", ""),
+                    "menu_bg_opacity": metadata.get("menu_bg_opacity", ""),
+                    "solid_color": metadata.get("solid_color", ""),
+                    "menu_opacity_color": metadata.get("menu_opacity_color", ""),
                 }
             
             response_data.append(value_dict)

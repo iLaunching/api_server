@@ -575,6 +575,74 @@ async def update_appearance(
         )
 
 
+@router.patch("/profile/itheme")
+async def update_user_itheme(
+    itheme_id: int,
+    session: Dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Update user's iTheme preference
+    """
+    try:
+        user_id = session.get("user_id")
+        
+        if not user_id:
+            logger.error("No user_id in session")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User ID not found in session"
+            )
+        
+        logger.info("=== UPDATING ITHEME ===", user_id=user_id, itheme_id=itheme_id)
+        
+        # Update the user's itheme_id in their profile
+        update_query = text("""
+            UPDATE user_profiles
+            SET itheme_id = :itheme_id
+            WHERE user_id = :user_id
+            RETURNING user_id
+        """)
+        
+        result = await db.execute(
+            update_query,
+            {"itheme_id": itheme_id, "user_id": user_id}
+        )
+        
+        updated_user = result.fetchone()
+        
+        if not updated_user:
+            logger.error("User profile not found", user_id=user_id)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User profile not found"
+            )
+        
+        await db.commit()
+        
+        logger.info("=== ITHEME UPDATED SUCCESSFULLY ===", user_id=user_id, itheme_id=itheme_id)
+        
+        return {
+            "message": "iTheme updated successfully",
+            "itheme_id": itheme_id,
+            "user_id": user_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error("=== FAILED TO UPDATE ITHEME ===", 
+                    user_id=session.get("user_id"), 
+                    itheme_id=itheme_id,
+                    error=str(e),
+                    error_type=type(e).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update itheme: {str(e)}"
+        )
+
+
 @router.patch("/profile/icon")
 async def update_profile_icon(
     profile_icon_id: int,

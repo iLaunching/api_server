@@ -167,18 +167,21 @@ async def create_hub_step(
         user_id = uuid.UUID(session_data.get("user_id"))
         
         # Check if user already has a default hub
-        existing_hubs = await db.execute(
-            select(SmartHub).where(SmartHub.owner_id == user_id)
+        existing_default_hub = await db.execute(
+            select(SmartHub).where(
+                SmartHub.owner_id == user_id,
+                SmartHub.is_default == True
+            )
         )
-        has_hubs = existing_hubs.scalar_one_or_none() is not None
+        has_default_hub = existing_default_hub.scalar_one_or_none() is not None
         
-        # Only set is_default=True for the first hub
+        # Only set is_default=True if user doesn't have a default hub yet
         hub = await SmartHub.create(
             db=db,
             owner_id=user_id,
             name=hub_name,
             hub_color_id=hub_color_id,
-            is_default=not has_hubs,  # Only first hub is default
+            is_default=not has_default_hub,  # Only set default if no default exists
             order_number=0,
             settings={"onboarding_in_progress": True}
         )

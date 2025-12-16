@@ -157,6 +157,7 @@ async def create_hub_step(
     hub_name: str,
     hub_color_id: int,
     journey: Optional[str] = "Validate Journey",
+    use_case_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
     session_data: dict = Depends(get_current_session)
 ):
@@ -182,6 +183,7 @@ async def create_hub_step(
             owner_id=user_id,
             name=hub_name,
             hub_color_id=hub_color_id,
+            use_case_id=use_case_id,
             journey=journey,
             is_default=not has_default_hub,  # Only set default if no default exists
             order_number=0,

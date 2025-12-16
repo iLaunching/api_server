@@ -198,8 +198,10 @@ async def create_hub_step(
         )
         
     except Exception as e:
-        logger.error("Hub creation failed", error=str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Hub creation failed", error=str(e), error_type=type(e).__name__, hub_name=hub_name, hub_color_id=hub_color_id, user_id=str(user_id))
+        import traceback
+        logger.error("Hub creation traceback", traceback=traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Hub creation failed: {str(e)}")
 
 
 @router.post("/create-matrix", response_model=OnboardingResponse)

@@ -24,7 +24,7 @@ class User(Base):
     oauth_provider = Column(String(50))
     oauth_provider_id = Column(String(255))
     role = Column(String(50), default="user")
-    subscription_tier = Column(String(50), default="free")
+    membership = Column(String(50), default="Individual")  # Individual or Enterprise
     email_verified = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -55,7 +55,7 @@ class User(Base):
             "last_name": self.last_name,
             "name": name,  # Computed field for backwards compatibility
             "role": self.role,
-            "subscription_tier": self.subscription_tier,
+            "membership": self.membership,
             "email_verified": self.email_verified,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "last_login": self.last_login.isoformat() if self.last_login else None,
@@ -121,10 +121,10 @@ class UserProfile(Base):
     account_type_id = Column(Integer, ForeignKey("option_values.id", ondelete="SET NULL"), nullable=True, index=True)
     
     # Appearance theme (foreign key to option_values for 'appearance' option set)
-    appearance_id = Column(Integer, ForeignKey("option_values.id", ondelete="SET NULL"), nullable=True, index=True)
+    appearance_id = Column(Integer, ForeignKey("option_values.id", ondelete="SET NULL"), nullable=True, index=True, default=6)
     
     # iTheme (foreign key to option_values for 'itheme' option set)
-    itheme_id = Column(Integer, ForeignKey("option_values.id", ondelete="SET NULL"), nullable=True, index=True)
+    itheme_id = Column(Integer, ForeignKey("option_values.id", ondelete="SET NULL"), nullable=True, index=True, default=10)
     
     # Avatar color (foreign key to option_values for 'smarthub_color_scheme' option set)
     avatar_color_id = Column(Integer, ForeignKey("option_values.id", ondelete="SET NULL"), nullable=True, index=True)
@@ -154,6 +154,13 @@ class UserProfile(Base):
     itheme = relationship("OptionValue", foreign_keys=[itheme_id])
     avatar_color = relationship("OptionValue", foreign_keys=[avatar_color_id])
     profile_icon = relationship("OptionValue", foreign_keys=[profile_icon_id])
+    
+    # Smart Hubs - one-to-many relationship through user_id
+    smart_hubs = relationship(
+        "SmartHub",
+        primaryjoin="foreign(SmartHub.owner_id) == UserProfile.user_id",
+        viewonly=True
+    )
     
     def __repr__(self):
         return f"<UserProfile(id={self.id}, user_id={self.user_id})>"

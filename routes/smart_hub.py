@@ -76,9 +76,16 @@ async def get_current_smart_hub(
                 # Load profile icon
                 selectinload(UserProfile.profile_icon),
                 
-                # Load navigation with current smart hub
+                # Load smart hubs with hub colors
+                selectinload(UserProfile.smart_hubs)
+                .selectinload(SmartHub.hub_color)
+                .selectinload(OptionValue.theme_config),
+                
+                # Load navigation with current smart hub and its hub_color relationship
                 selectinload(UserProfile.navigation)
                 .selectinload(UserNavigation.current_smart_hub)
+                .selectinload(SmartHub.hub_color)
+                .selectinload(OptionValue.theme_config)
             )
             .where(UserProfile.user_id == user_id)
         )
@@ -164,12 +171,27 @@ async def get_current_smart_hub(
         smart_hub_data = None
         if navigation.current_smart_hub:
             hub = navigation.current_smart_hub
+            
+            # Extract hub color from relationship (same pattern as avatar_color)
+            hub_color = "#7F77F1"  # Default purple
+            try:
+                if hub.hub_color and hasattr(hub.hub_color, 'theme_config') and hub.hub_color.theme_config:
+                    if hub.hub_color.theme_config.theme_metadata:
+                        hub_color = hub.hub_color.theme_config.theme_metadata.get("color", "#7F77F1")
+                    logger.info("Hub color loaded from relationship", hub_color=hub_color)
+                else:
+                    logger.info("Using default hub color", hub_color_id=hub.hub_color_id)
+            except Exception as e:
+                logger.warning("Failed to load hub color from relationship, using default", error=str(e), hub_color_id=hub.hub_color_id)
+            
             smart_hub_data = {
                 "id": str(hub.id),
                 "name": hub.name,
                 "description": hub.description,
                 "avatar": hub.avatar,
-                "hub_color": hub.hub_color,
+                "hub_color": hub_color,
+                "hub_color_id": hub.hub_color_id,
+                "journey": hub.journey or "Validate Journey",  # Per-hub journey tier
                 "owner_id": str(hub.owner_id),
                 "is_default": hub.is_default,
                 "created_at": hub.created_at.isoformat() if hub.created_at else None,
@@ -180,12 +202,34 @@ async def get_current_smart_hub(
             }
             logger.info("Smart hub loaded from navigation", 
                        hub_id=str(hub.id),
-                       hub_name=hub.name)
+                       hub_name=hub.name,
+                       hub_color=hub_color)
         
         logger.info("Current smart hub retrieved successfully", 
                    user_id=user_id,
                    has_hub=smart_hub_data is not None,
                    has_theme=theme_data is not None)
+        
+        # Build smart hubs list with colors
+        smart_hubs_list = []
+        if profile.smart_hubs:
+            for hub in profile.smart_hubs:
+                hub_color_value = None
+                if hub.hub_color and hub.hub_color.theme_config:
+                    try:
+                        hub_color_value = hub.hub_color.theme_config.theme_metadata.get("color")
+                    except Exception as e:
+                        logger.warning("Failed to extract hub color", hub_id=str(hub.id), error=str(e))
+                
+                smart_hubs_list.append({
+                    "id": str(hub.id),
+                    "name": hub.name,
+                    "hub_color_id": hub.hub_color_id,
+                    "color": hub_color_value,
+                    "journey": hub.journey or "Validate Journey"
+                })
+        
+        logger.info("Smart hubs loaded", count=len(smart_hubs_list))
         
         return {
             "smart_hub": smart_hub_data,
@@ -198,6 +242,7 @@ async def get_current_smart_hub(
                 "timezone": profile.timezone,
                 "language": profile.language,
                 "onboarding_completed": profile.onboarding_completed,
+                "smart_hubs": smart_hubs_list,
                 "appearance": {
                     "id": profile.appearance.id,
                     "value_name": profile.appearance.value_name,

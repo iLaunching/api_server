@@ -392,8 +392,10 @@ class SmartHub(Base):
     name = Column(String(255), nullable=False)
     description = Column(Text)
     avatar = Column(Text)  # Avatar image/icon for the hub
-    hub_color = Column(String(50))  # Color theme for this hub
+    hub_color_id = Column(Integer, ForeignKey("option_values.id", ondelete="SET NULL"), nullable=True, index=True)  # FK to smarthub_color_scheme option set
+    use_case_id = Column(Integer, ForeignKey("option_values.id", ondelete="SET NULL"), nullable=True, index=True)  # FK to smart_hub_use_case option set
     order_number = Column(Integer, default=0)  # Display order for user's hubs
+    journey = Column(String(50), default="Validate Journey")  # Per-hub journey tier
     
     # Hub status
     is_active = Column(Boolean, default=True, index=True)
@@ -408,6 +410,8 @@ class SmartHub(Base):
     
     # Relationships
     smart_matrix = relationship("SmartMatrix", back_populates="smart_hub", uselist=False, cascade="all, delete-orphan")
+    hub_color = relationship("OptionValue", foreign_keys=[hub_color_id])
+    use_case = relationship("OptionValue", foreign_keys=[use_case_id])
     
     def __repr__(self):
         return f"<SmartHub(id={self.id}, name={self.name}, owner_id={self.owner_id})>"
@@ -420,7 +424,8 @@ class SmartHub(Base):
             "name": self.name,
             "description": self.description,
             "avatar": self.avatar,
-            "hub_color": self.hub_color,
+            "hub_color_id": self.hub_color_id,
+            "use_case_id": self.use_case_id,
             "order_number": self.order_number,
             "is_active": self.is_active,
             "is_default": self.is_default,

@@ -97,7 +97,7 @@ async def complete_onboarding(
             db=db,
             owner_id=user_id,
             name=request.hub_name,
-            hub_color=str(request.hub_color_id),
+            hub_color_id=request.hub_color_id,
             is_default=True,  # First hub is always default
             order_number=0,
             settings={
@@ -156,6 +156,8 @@ async def complete_onboarding(
 async def create_hub_step(
     hub_name: str,
     hub_color_id: int,
+    journey: Optional[str] = "Validate Journey",
+    use_case_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
     session_data: dict = Depends(get_current_session)
 ):
@@ -166,12 +168,24 @@ async def create_hub_step(
     try:
         user_id = uuid.UUID(session_data.get("user_id"))
         
+        # Check if user already has a default hub
+        existing_default_hub = await db.execute(
+            select(SmartHub).where(
+                SmartHub.owner_id == user_id,
+                SmartHub.is_default == True
+            )
+        )
+        has_default_hub = existing_default_hub.scalar_one_or_none() is not None
+        
+        # Only set is_default=True if user doesn't have a default hub yet
         hub = await SmartHub.create(
             db=db,
             owner_id=user_id,
             name=hub_name,
-            hub_color=str(hub_color_id),
-            is_default=True,
+            hub_color_id=hub_color_id,
+            use_case_id=use_case_id,
+            journey=journey,
+            is_default=not has_default_hub,  # Only set default if no default exists
             order_number=0,
             settings={"onboarding_in_progress": True}
         )
@@ -198,8 +212,10 @@ async def create_hub_step(
         )
         
     except Exception as e:
-        logger.error("Hub creation failed", error=str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Hub creation failed", error=str(e), error_type=type(e).__name__, hub_name=hub_name, hub_color_id=hub_color_id, user_id=str(user_id))
+        import traceback
+        logger.error("Hub creation traceback", traceback=traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Hub creation failed: {str(e)}")
 
 
 @router.post("/create-matrix", response_model=OnboardingResponse)

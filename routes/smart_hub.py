@@ -508,6 +508,73 @@ async def update_avatar_color(
         )
 
 
+@router.patch("/profile/appearance")
+async def update_appearance(
+    appearance_id: int,
+    session: Dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Update user's appearance theme
+    """
+    try:
+        user_id = session.get("user_id")
+        
+        if not user_id:
+            logger.error("No user_id in session")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User ID not found in session"
+            )
+        
+        logger.info("=== UPDATING APPEARANCE ===", user_id=user_id, appearance_id=appearance_id)
+        
+        # Update the appearance_id directly using SQL
+        update_query = text("""
+            UPDATE user_profiles 
+            SET appearance_id = :appearance_id 
+            WHERE user_id = :user_id
+        """)
+        
+        result = await db.execute(
+            update_query,
+            {"appearance_id": appearance_id, "user_id": user_id}
+        )
+        
+        logger.info("Update executed", rowcount=result.rowcount)
+        
+        if result.rowcount == 0:
+            logger.error("No rows updated - profile not found", user_id=user_id)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User profile not found"
+            )
+        
+        await db.commit()
+        
+        logger.info("=== APPEARANCE UPDATED SUCCESSFULLY ===", user_id=user_id, appearance_id=appearance_id)
+        
+        return {
+            "message": "Appearance updated successfully",
+            "appearance_id": appearance_id,
+            "user_id": user_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error("=== FAILED TO UPDATE APPEARANCE ===", 
+                    user_id=session.get("user_id"), 
+                    appearance_id=appearance_id,
+                    error=str(e),
+                    error_type=type(e).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update appearance: {str(e)}"
+        )
+
+
 @router.patch("/profile/icon")
 async def update_profile_icon(
     profile_icon_id: int,

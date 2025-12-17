@@ -196,6 +196,10 @@ async def get_current_smart_hub(
             
             # Extract hub icon metadata from relationship (same pattern as profile_icon)
             hub_icon_metadata = None
+            logger.info("Checking hub icon relationship", 
+                       smartHub_icon_id=hub.smartHub_icon_id,
+                       has_smartHub_icon=hub.smartHub_icon is not None)
+            
             if hub.smartHub_icon:
                 try:
                     if hasattr(hub.smartHub_icon, 'theme_config') and hub.smartHub_icon.theme_config:
@@ -203,8 +207,13 @@ async def get_current_smart_hub(
                         logger.info("Hub icon loaded from relationship", 
                                    icon_name=hub_icon_metadata.get("icon_name"),
                                    icon_prefix=hub_icon_metadata.get("icon_prefix"))
+                    else:
+                        logger.warning("Hub icon loaded but has no theme_config")
                 except Exception as e:
                     logger.warning("Failed to load hub icon metadata", error=str(e))
+            else:
+                logger.warning("Hub icon relationship is None despite having smartHub_icon_id", 
+                             smartHub_icon_id=hub.smartHub_icon_id)
             
             smart_hub_data = {
                 "id": str(hub.id),

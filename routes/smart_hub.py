@@ -148,6 +148,7 @@ async def get_current_smart_hub(
                 "header_overlay": theme_config.header_overlay_color,
                 "background": theme_config.background_color,
                 "text": theme_config.text_color,
+                "appearance_text_color": theme_config.text_color,  # Add explicit appearance_text_color
                 "menu": theme_config.menu_color,
                 "border": theme_config.border_line_color,
                 "user_button_color": theme_config.user_button_color or "#ffffff59",
@@ -161,7 +162,9 @@ async def get_current_smart_hub(
             # Add itheme solid_color for MainHeader background
             if profile.itheme and profile.itheme.theme_config:
                 itheme_metadata = profile.itheme.theme_config.theme_metadata or {}
-                theme_data["header_background"] = itheme_metadata.get("solid_color", "#7F77F1")  # Default to ipurple
+                solid_color_value = itheme_metadata.get("solid_color", "#7F77F1")
+                theme_data["header_background"] = solid_color_value  # Default to ipurple
+                theme_data["solid_color"] = solid_color_value  # Add solid_color for frontend components
                 theme_data["bg_opacity"] = itheme_metadata.get("bg_opacity", "#7F77F125")
                 theme_data["tone_button_bk_color"] = itheme_metadata.get("toneButton_bk_color", "#7F77F166")
                 theme_data["tone_button_text_color"] = itheme_metadata.get("toneButton_text_color", "#6B63DD")

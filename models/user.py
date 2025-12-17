@@ -55,7 +55,7 @@ class User(Base):
             "last_name": self.last_name,
             "name": name,  # Computed field for backwards compatibility
             "role": self.role,
-            "membership": self.membership,
+            "subscription_tier": self.subscription_tier,
             "email_verified": self.email_verified,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "last_login": self.last_login.isoformat() if self.last_login else None,

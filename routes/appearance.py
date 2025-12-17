@@ -229,6 +229,82 @@ async def get_option_sets():
         logger.error("Failed to get option sets", error=str(e))
         raise HTTPException(status_code=500, detail="Failed to retrieve option sets")
 
+@router.get("/option-values")
+async def get_option_values_by_set(
+    option_set_name: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all option values for a specific option set with their theme configs"""
+    try:
+        # Query for option set
+        result = await db.execute(
+            select(OptionSet)
+            .where(OptionSet.name == option_set_name)
+        )
+        option_set = result.scalar_one_or_none()
+        
+        if not option_set:
+            raise HTTPException(status_code=404, detail=f"Option set '{option_set_name}' not found")
+        
+        # Query for option values with theme configs
+        from sqlalchemy.orm import selectinload
+        result = await db.execute(
+            select(OptionValue)
+            .where(OptionValue.option_set_id == option_set.id)
+            .where(OptionValue.is_active == True)
+            .options(selectinload(OptionValue.theme_config))
+            .order_by(OptionValue.sort_order)
+        )
+        option_values = result.scalars().all()
+        
+        # Build response with theme configs
+        response_data = []
+        for ov in option_values:
+            value_dict = {
+                "id": ov.id,
+                "value_name": ov.value_name,
+                "display_name": ov.display_name,
+                "sort_order": ov.sort_order,
+            }
+            
+            # Add theme_config if it exists (for appearance)
+            if ov.theme_config and option_set_name == "appearance":
+                value_dict["theme_config"] = {
+                    "text_color": ov.theme_config.text_color,
+                    "background_color": ov.theme_config.background_color,
+                    "menu_color": ov.theme_config.menu_color,
+                    "border_line_color": ov.theme_config.border_line_color,
+                }
+            
+            # Add itheme_config if it exists (for itheme)
+            if ov.theme_config and option_set_name == "itheme":
+                metadata = ov.theme_config.theme_metadata or {}
+                value_dict["itheme_config"] = {
+                    "name": ov.theme_config.name,
+                    "bg_opacity": metadata.get("bg_opacity", ""),
+                    "bg_gradient": metadata.get("bg_gradient", ""),
+                    "hover_color": metadata.get("hover_color", ""),
+                    "menu_bg_opacity": metadata.get("menu_bg_opacity", ""),
+                    "solid_color": metadata.get("solid_color", ""),
+                    "menu_opacity_color": metadata.get("menu_opacity_color", ""),
+                }
+            
+            response_data.append(value_dict)
+        
+        logger.info("Option values retrieved", 
+                   option_set=option_set_name, 
+                   count=len(response_data))
+        
+        return response_data
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to get option values", 
+                    option_set=option_set_name,
+                    error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to retrieve option values")
+
 @router.get("/smarthub-colors")
 async def get_smarthub_colors():
     """Get all available Smart Hub color scheme options"""

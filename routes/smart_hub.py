@@ -152,6 +152,7 @@ async def get_current_smart_hub(
             if profile.itheme and profile.itheme.theme_config:
                 itheme_metadata = profile.itheme.theme_config.theme_metadata or {}
                 theme_data["header_background"] = itheme_metadata.get("solid_color", "#7F77F1")  # Default to ipurple
+                theme_data["bg_opacity"] = itheme_metadata.get("bg_opacity", "#7F77F125")
                 theme_data["tone_button_bk_color"] = itheme_metadata.get("toneButton_bk_color", "#7F77F166")
                 theme_data["tone_button_text_color"] = itheme_metadata.get("toneButton_text_color", "#6B63DD")
                 theme_data["tone_button_border_color"] = itheme_metadata.get("toneButton_border_color", "#6B63DD")
@@ -508,6 +509,141 @@ async def update_avatar_color(
         )
 
 
+@router.patch("/profile/appearance")
+async def update_appearance(
+    appearance_id: int,
+    session: Dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Update user's appearance theme
+    """
+    try:
+        user_id = session.get("user_id")
+        
+        if not user_id:
+            logger.error("No user_id in session")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User ID not found in session"
+            )
+        
+        logger.info("=== UPDATING APPEARANCE ===", user_id=user_id, appearance_id=appearance_id)
+        
+        # Update the appearance_id directly using SQL
+        update_query = text("""
+            UPDATE user_profiles 
+            SET appearance_id = :appearance_id 
+            WHERE user_id = :user_id
+        """)
+        
+        result = await db.execute(
+            update_query,
+            {"appearance_id": appearance_id, "user_id": user_id}
+        )
+        
+        logger.info("Update executed", rowcount=result.rowcount)
+        
+        if result.rowcount == 0:
+            logger.error("No rows updated - profile not found", user_id=user_id)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User profile not found"
+            )
+        
+        await db.commit()
+        
+        logger.info("=== APPEARANCE UPDATED SUCCESSFULLY ===", user_id=user_id, appearance_id=appearance_id)
+        
+        return {
+            "message": "Appearance updated successfully",
+            "appearance_id": appearance_id,
+            "user_id": user_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error("=== FAILED TO UPDATE APPEARANCE ===", 
+                    user_id=session.get("user_id"), 
+                    appearance_id=appearance_id,
+                    error=str(e),
+                    error_type=type(e).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update appearance: {str(e)}"
+        )
+
+
+@router.patch("/profile/itheme")
+async def update_user_itheme(
+    itheme_id: int,
+    session: Dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Update user's iTheme preference
+    """
+    try:
+        user_id = session.get("user_id")
+        
+        if not user_id:
+            logger.error("No user_id in session")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User ID not found in session"
+            )
+        
+        logger.info("=== UPDATING ITHEME ===", user_id=user_id, itheme_id=itheme_id)
+        
+        # Update the user's itheme_id in their profile
+        update_query = text("""
+            UPDATE user_profiles
+            SET itheme_id = :itheme_id
+            WHERE user_id = :user_id
+            RETURNING user_id
+        """)
+        
+        result = await db.execute(
+            update_query,
+            {"itheme_id": itheme_id, "user_id": user_id}
+        )
+        
+        updated_user = result.fetchone()
+        
+        if not updated_user:
+            logger.error("User profile not found", user_id=user_id)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User profile not found"
+            )
+        
+        await db.commit()
+        
+        logger.info("=== ITHEME UPDATED SUCCESSFULLY ===", user_id=user_id, itheme_id=itheme_id)
+        
+        return {
+            "message": "iTheme updated successfully",
+            "itheme_id": itheme_id,
+            "user_id": user_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error("=== FAILED TO UPDATE ITHEME ===", 
+                    user_id=session.get("user_id"), 
+                    itheme_id=itheme_id,
+                    error=str(e),
+                    error_type=type(e).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update itheme: {str(e)}"
+        )
+
+
 @router.patch("/profile/icon")
 async def update_profile_icon(
     profile_icon_id: int,
@@ -638,4 +774,96 @@ async def clear_profile_icon(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to clear profile icon: {str(e)}"
+        )
+
+
+@router.patch("/smart-hub/color")
+async def update_smart_hub_color(
+    smart_hub_id: str,
+    hub_color_id: int,
+    session: Dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Update a smart hub's color scheme - Direct access, no searching
+    """
+    try:
+        user_id = session.get("user_id")
+        
+        if not user_id:
+            logger.error("No user_id in session")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User ID not found in session"
+            )
+        
+        logger.info("=== UPDATING SMART HUB COLOR ===", 
+                   user_id=user_id,
+                   smart_hub_id=smart_hub_id,
+                   hub_color_id=hub_color_id)
+        
+        # Verify the color option exists
+        color_query = select(OptionValue).where(
+            OptionValue.id == hub_color_id
+        )
+        color_result = await db.execute(color_query)
+        color_option = color_result.scalar_one_or_none()
+        
+        if not color_option:
+            logger.error("Invalid hub_color_id", hub_color_id=hub_color_id)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid hub color ID: {hub_color_id}"
+            )
+        
+        # Direct update - no navigation search needed
+        update_query = text("""
+            UPDATE smart_hubs 
+            SET hub_color_id = :hub_color_id
+            WHERE id = :smart_hub_id
+        """)
+        
+        result = await db.execute(
+            update_query,
+            {
+                "hub_color_id": hub_color_id,
+                "smart_hub_id": smart_hub_id
+            }
+        )
+        
+        logger.info("Update executed", rowcount=result.rowcount)
+        
+        if result.rowcount == 0:
+            logger.error("No rows updated - smart hub not found", 
+                        smart_hub_id=smart_hub_id)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Smart hub not found"
+            )
+        
+        await db.commit()
+        
+        logger.info("=== SMART HUB COLOR UPDATED SUCCESSFULLY ===", 
+                   user_id=user_id,
+                   smart_hub_id=smart_hub_id,
+                   hub_color_id=hub_color_id)
+        
+        return {
+            "message": "Smart hub color updated successfully",
+            "smart_hub_id": smart_hub_id,
+            "hub_color_id": hub_color_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error("=== FAILED TO UPDATE SMART HUB COLOR ===", 
+                    user_id=session.get("user_id"), 
+                    hub_color_id=hub_color_id,
+                    error=str(e),
+                    error_type=type(e).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update smart hub color: {str(e)}"
         )

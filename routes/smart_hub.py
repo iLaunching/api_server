@@ -143,6 +143,7 @@ async def get_current_smart_hub(
         theme_data = None
         if profile.appearance and profile.appearance.theme_config:
             theme_config = profile.appearance.theme_config
+            appearance_metadata = theme_config.theme_metadata or {}
             
             theme_data = {
                 "header_overlay": theme_config.header_overlay_color,
@@ -156,7 +157,9 @@ async def get_current_smart_hub(
                 "user_button_icon": theme_config.user_button_icon or "#000000",
                 "title_menu_color_light": theme_config.title_menu_color_light or "#d6d6d6",
                 "border_line_color_light": theme_config.border_line_color_light or "#d6d6d680",
-                "global_button_hover": theme_config.global_button_hover or "#d6d6d64d"
+                "global_button_hover": theme_config.global_button_hover or "#d6d6d64d",
+                # Add appearance theme metadata properties
+                "feedback_indicator_bk": appearance_metadata.get("feedback_indicator_bk", "#7F77F1")
             }
             
             # Add itheme solid_color for MainHeader background
@@ -169,7 +172,6 @@ async def get_current_smart_hub(
                 theme_data["tone_button_bk_color"] = itheme_metadata.get("toneButton_bk_color", "#7F77F166")
                 theme_data["tone_button_text_color"] = itheme_metadata.get("toneButton_text_color", "#6B63DD")
                 theme_data["tone_button_border_color"] = itheme_metadata.get("toneButton_border_color", "#6B63DD")
-                theme_data["feedback_indicator_bk"] = itheme_metadata.get("feedback_indicator_bk", "#7F77F1")
                 theme_data["button_bk_color"] = itheme_metadata.get("button_bk_color", "#7F77F1")
                 theme_data["button_text_color"] = itheme_metadata.get("button_text_color", "#ffffff")
                 theme_data["button_hover_color"] = itheme_metadata.get("button_hover_color", "#6B63DD")

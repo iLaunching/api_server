@@ -779,12 +779,13 @@ async def clear_profile_icon(
 
 @router.patch("/smart-hub/color")
 async def update_smart_hub_color(
+    smart_hub_id: str,
     hub_color_id: int,
     session: Dict = Depends(get_current_session),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Update the current smart hub's color scheme
+    Update a smart hub's color scheme - Direct access, no searching
     """
     try:
         user_id = session.get("user_id")
@@ -797,10 +798,11 @@ async def update_smart_hub_color(
             )
         
         logger.info("=== UPDATING SMART HUB COLOR ===", 
-                   user_id=user_id, 
+                   user_id=user_id,
+                   smart_hub_id=smart_hub_id,
                    hub_color_id=hub_color_id)
         
-        # Verify the color option exists and is from smarthub_colors option set
+        # Verify the color option exists
         color_query = select(OptionValue).where(
             OptionValue.id == hub_color_id
         )
@@ -814,21 +816,7 @@ async def update_smart_hub_color(
                 detail=f"Invalid hub color ID: {hub_color_id}"
             )
         
-        # Get current smart hub from navigation
-        nav_query = select(UserNavigation).where(
-            UserNavigation.user_profile_id == user_id
-        )
-        nav_result = await db.execute(nav_query)
-        navigation = nav_result.scalar_one_or_none()
-        
-        if not navigation or not navigation.current_smart_hub_id:
-            logger.error("No current smart hub found", user_id=user_id)
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No active smart hub found"
-            )
-        
-        # Update smart hub color
+        # Direct update - no navigation search needed
         update_query = text("""
             UPDATE smart_hubs 
             SET hub_color_id = :hub_color_id
@@ -839,7 +827,7 @@ async def update_smart_hub_color(
             update_query,
             {
                 "hub_color_id": hub_color_id,
-                "smart_hub_id": navigation.current_smart_hub_id
+                "smart_hub_id": smart_hub_id
             }
         )
         
@@ -847,7 +835,7 @@ async def update_smart_hub_color(
         
         if result.rowcount == 0:
             logger.error("No rows updated - smart hub not found", 
-                        smart_hub_id=navigation.current_smart_hub_id)
+                        smart_hub_id=smart_hub_id)
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Smart hub not found"
@@ -857,12 +845,12 @@ async def update_smart_hub_color(
         
         logger.info("=== SMART HUB COLOR UPDATED SUCCESSFULLY ===", 
                    user_id=user_id,
-                   smart_hub_id=navigation.current_smart_hub_id,
+                   smart_hub_id=smart_hub_id,
                    hub_color_id=hub_color_id)
         
         return {
             "message": "Smart hub color updated successfully",
-            "smart_hub_id": navigation.current_smart_hub_id,
+            "smart_hub_id": smart_hub_id,
             "hub_color_id": hub_color_id
         }
         

@@ -775,3 +775,96 @@ async def clear_profile_icon(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to clear profile icon: {str(e)}"
         )
+
+
+@router.patch("/smart-hubs/{smart_hub_id}/color")
+async def update_smart_hub_color(
+    smart_hub_id: str,
+    color_id: int = Query(..., description="The color option value ID to set"),
+    db: AsyncSession = Depends(get_db),
+    session: dict = Depends(verify_session)
+):
+    """
+    Update the color of a specific smart hub.
+    
+    Args:
+        smart_hub_id: The ID of the smart hub to update
+        color_id: The option_value_id from smarthub_color_scheme option set
+        db: Database session
+        session: User session containing user_id
+    
+    Returns:
+        Success message with updated color information
+    """
+    user_id = session.get("user_id")
+    
+    logger.info("=== UPDATE SMART HUB COLOR REQUEST ===", 
+                user_id=user_id, 
+                smart_hub_id=smart_hub_id,
+                color_id=color_id)
+    
+    try:
+        # Verify user owns or has access to this smart hub
+        result = await db.execute(
+            select(SmartHub).where(
+                SmartHub.id == smart_hub_id,
+                SmartHub.owner_id == user_id
+            )
+        )
+        smart_hub = result.scalar_one_or_none()
+        
+        if not smart_hub:
+            logger.error("Smart hub not found or access denied", 
+                        user_id=user_id, 
+                        smart_hub_id=smart_hub_id)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Smart Hub not found or you don't have permission to modify it"
+            )
+        
+        # Verify the color_id exists in option_values
+        color_result = await db.execute(
+            select(OptionValue).where(OptionValue.option_value_id == color_id)
+        )
+        color_option = color_result.scalar_one_or_none()
+        
+        if not color_option:
+            logger.error("Color option not found", color_id=color_id)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Color option not found"
+            )
+        
+        # Update the smart hub color
+        await db.execute(
+            update(SmartHub)
+            .where(SmartHub.id == smart_hub_id)
+            .values(hub_color_id=color_id)
+        )
+        
+        await db.commit()
+        
+        logger.info("=== SMART HUB COLOR UPDATED SUCCESSFULLY ===", 
+                   user_id=user_id,
+                   smart_hub_id=smart_hub_id,
+                   color_id=color_id)
+        
+        return {
+            "message": "Smart Hub color updated successfully",
+            "smart_hub_id": smart_hub_id,
+            "color_id": color_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error("=== FAILED TO UPDATE SMART HUB COLOR ===", 
+                    user_id=user_id,
+                    smart_hub_id=smart_hub_id,
+                    error=str(e),
+                    error_type=type(e).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update smart hub color: {str(e)}"
+        )

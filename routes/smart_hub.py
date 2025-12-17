@@ -82,7 +82,8 @@ async def get_current_smart_hub(
                 .selectinload(OptionValue.theme_config),
                 
                 selectinload(UserProfile.smart_hubs)
-                .selectinload(SmartHub.smartHub_icon),
+                .selectinload(SmartHub.smartHub_icon)
+                .selectinload(OptionValue.theme_config),
                 
                 # Load navigation with current smart hub and its hub_color and icon relationships
                 selectinload(UserProfile.navigation)
@@ -93,6 +94,7 @@ async def get_current_smart_hub(
                 selectinload(UserProfile.navigation)
                 .selectinload(UserNavigation.current_smart_hub)
                 .selectinload(SmartHub.smartHub_icon)
+                .selectinload(OptionValue.theme_config)
             )
             .where(UserProfile.user_id == user_id)
         )

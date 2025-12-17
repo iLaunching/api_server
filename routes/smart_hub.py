@@ -4,11 +4,14 @@ API endpoints for Smart Hub management and current user profile
 """
 
 from typing import Optional, Dict, Any
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 from sqlalchemy.orm import selectinload
 import structlog
+import os
+import uuid
+from pathlib import Path
 
 from config.database import get_db
 from auth.middleware import get_current_session
@@ -76,16 +79,23 @@ async def get_current_smart_hub(
                 # Load profile icon
                 selectinload(UserProfile.profile_icon),
                 
-                # Load smart hubs with hub colors
+                # Load smart hubs with hub colors and icons
                 selectinload(UserProfile.smart_hubs)
                 .selectinload(SmartHub.hub_color)
                 .selectinload(OptionValue.theme_config),
                 
-                # Load navigation with current smart hub and its hub_color relationship
+                selectinload(UserProfile.smart_hubs)
+                .selectinload(SmartHub.smartHub_icon),
+                
+                # Load navigation with current smart hub and its hub_color and icon relationships
                 selectinload(UserProfile.navigation)
                 .selectinload(UserNavigation.current_smart_hub)
                 .selectinload(SmartHub.hub_color)
-                .selectinload(OptionValue.theme_config)
+                .selectinload(OptionValue.theme_config),
+                
+                selectinload(UserProfile.navigation)
+                .selectinload(UserNavigation.current_smart_hub)
+                .selectinload(SmartHub.smartHub_icon)
             )
             .where(UserProfile.user_id == user_id)
         )
@@ -138,6 +148,7 @@ async def get_current_smart_hub(
                 "header_overlay": theme_config.header_overlay_color,
                 "background": theme_config.background_color,
                 "text": theme_config.text_color,
+                "appearance_text_color": theme_config.text_color,  # Add explicit appearance_text_color
                 "menu": theme_config.menu_color,
                 "border": theme_config.border_line_color,
                 "user_button_color": theme_config.user_button_color or "#ffffff59",
@@ -151,7 +162,9 @@ async def get_current_smart_hub(
             # Add itheme solid_color for MainHeader background
             if profile.itheme and profile.itheme.theme_config:
                 itheme_metadata = profile.itheme.theme_config.theme_metadata or {}
-                theme_data["header_background"] = itheme_metadata.get("solid_color", "#7F77F1")  # Default to ipurple
+                solid_color_value = itheme_metadata.get("solid_color", "#7F77F1")
+                theme_data["header_background"] = solid_color_value  # Default to ipurple
+                theme_data["solid_color"] = solid_color_value  # Add solid_color for frontend components
                 theme_data["bg_opacity"] = itheme_metadata.get("bg_opacity", "#7F77F125")
                 theme_data["tone_button_bk_color"] = itheme_metadata.get("toneButton_bk_color", "#7F77F166")
                 theme_data["tone_button_text_color"] = itheme_metadata.get("toneButton_text_color", "#6B63DD")
@@ -185,6 +198,40 @@ async def get_current_smart_hub(
             except Exception as e:
                 logger.warning("Failed to load hub color from relationship, using default", error=str(e), hub_color_id=hub.hub_color_id)
             
+            # Extract hub icon metadata from icon_metadata table (same as profile icons)
+            hub_icon_metadata = None
+            logger.info("Checking hub icon relationship", 
+                       smartHub_icon_id=hub.smartHub_icon_id,
+                       has_smartHub_icon=hub.smartHub_icon is not None)
+            
+            if hub.smartHub_icon_id:
+                try:
+                    # Query icon_metadata table for icon details
+                    icon_result = await db.execute(
+                        text("""
+                            SELECT icon_name, icon_prefix
+                            FROM icon_metadata
+                            WHERE option_value_id = :icon_id
+                        """),
+                        {"icon_id": hub.smartHub_icon_id}
+                    )
+                    icon_row = icon_result.fetchone()
+                    if icon_row:
+                        hub_icon_metadata = {
+                            'icon_name': icon_row[0],
+                            'icon_prefix': icon_row[1]
+                        }
+                        logger.info("Hub icon loaded from icon_metadata table", 
+                                   icon_name=icon_row[0],
+                                   icon_prefix=icon_row[1])
+                    else:
+                        logger.warning("No icon_metadata found for smartHub_icon_id", 
+                                     smartHub_icon_id=hub.smartHub_icon_id)
+                except Exception as e:
+                    logger.error("Failed to load hub icon metadata from icon_metadata table", 
+                               error=str(e),
+                               smartHub_icon_id=hub.smartHub_icon_id)
+            
             smart_hub_data = {
                 "id": str(hub.id),
                 "name": hub.name,
@@ -192,6 +239,15 @@ async def get_current_smart_hub(
                 "avatar": hub.avatar,
                 "hub_color": hub_color,
                 "hub_color_id": hub.hub_color_id,
+                "smartHub_icon_id": hub.smartHub_icon_id,
+                "avatar_display_option_value_id": hub.avatar_display_option_value_id,
+                "smartHub_icon": {
+                    "id": hub.smartHub_icon.id,
+                    "value_name": hub.smartHub_icon.value_name,
+                    "display_name": hub.smartHub_icon.display_name,
+                    "icon_name": hub_icon_metadata.get("icon_name") if hub_icon_metadata else None,
+                    "icon_prefix": hub_icon_metadata.get("icon_prefix") if hub_icon_metadata else None
+                } if hub.smartHub_icon and hub_icon_metadata else None,
                 "journey": hub.journey or "Validate Journey",  # Per-hub journey tier
                 "owner_id": str(hub.owner_id),
                 "is_default": hub.is_default,
@@ -867,3 +923,335 @@ async def update_smart_hub_color(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update smart hub color: {str(e)}"
         )
+
+
+@router.patch("/smart-hub/icon")
+async def update_smart_hub_icon(
+    smart_hub_id: str,
+    smartHub_icon_id: int,
+    session: Dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Update smart hub's icon - Direct access with smart_hub_id
+    """
+    try:
+        user_id = session.get("user_id")
+        
+        if not user_id:
+            logger.error("No user_id in session")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User ID not found in session"
+            )
+        
+        logger.info("=== UPDATING SMART HUB ICON ===", 
+                   user_id=user_id,
+                   smart_hub_id=smart_hub_id,
+                   smartHub_icon_id=smartHub_icon_id)
+        
+        # Update the smarthub_icon_id and set avatar_display_option to 'icon' (ID: 26)
+        update_query = text("""
+            UPDATE smart_hubs 
+            SET smarthub_icon_id = :smartHub_icon_id,
+                avatar_display_option_value_id = 26
+            WHERE id = :smart_hub_id
+        """)
+        
+        result = await db.execute(
+            update_query,
+            {
+                "smartHub_icon_id": smartHub_icon_id,
+                "smart_hub_id": smart_hub_id
+            }
+        )
+        
+        logger.info("Update executed", rowcount=result.rowcount)
+        
+        if result.rowcount == 0:
+            logger.error("No rows updated - smart hub not found", smart_hub_id=smart_hub_id)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Smart hub not found"
+            )
+        
+        await db.commit()
+        
+        logger.info("=== SMART HUB ICON UPDATED SUCCESSFULLY ===", 
+                   user_id=user_id,
+                   smart_hub_id=smart_hub_id,
+                   smartHub_icon_id=smartHub_icon_id)
+        
+        return {
+            "message": "Smart hub icon updated successfully",
+            "smart_hub_id": smart_hub_id,
+            "smartHub_icon_id": smartHub_icon_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error("=== FAILED TO UPDATE SMART HUB ICON ===", 
+                    user_id=session.get("user_id"),
+                    smart_hub_id=smart_hub_id,
+                    smartHub_icon_id=smartHub_icon_id,
+                    error=str(e),
+                    error_type=type(e).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update smart hub icon: {str(e)}"
+        )
+
+
+@router.delete("/smart-hub/icon")
+async def clear_smart_hub_icon(
+    smart_hub_id: str,
+    session: Dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Clear smart hub's icon and reset to default avatar display - Direct access with smart_hub_id
+    """
+    try:
+        user_id = session.get("user_id")
+        
+        if not user_id:
+            logger.error("No user_id in session")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User ID not found in session"
+            )
+        
+        logger.info("=== CLEARING SMART HUB ICON ===", 
+                   user_id=user_id,
+                   smart_hub_id=smart_hub_id)
+        
+        # Clear smarthub_icon_id and set avatar_display_option to 'default' (ID: 24)
+        update_query = text("""
+            UPDATE smart_hubs 
+            SET smarthub_icon_id = NULL,
+                avatar_display_option_value_id = 24
+            WHERE id = :smart_hub_id
+        """)
+        
+        result = await db.execute(
+            update_query,
+            {"smart_hub_id": smart_hub_id}
+        )
+        
+        logger.info("Update executed", rowcount=result.rowcount)
+        
+        if result.rowcount == 0:
+            logger.error("No rows updated - smart hub not found", smart_hub_id=smart_hub_id)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Smart hub not found"
+            )
+        
+        await db.commit()
+        
+        logger.info("=== SMART HUB ICON CLEARED SUCCESSFULLY ===", 
+                   user_id=user_id,
+                   smart_hub_id=smart_hub_id)
+        
+        return {
+            "message": "Smart hub icon cleared successfully",
+            "smart_hub_id": smart_hub_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error("=== FAILED TO CLEAR SMART HUB ICON ===", 
+                    user_id=session.get("user_id"),
+                    smart_hub_id=smart_hub_id,
+                    error=str(e),
+                    error_type=type(e).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to clear smart hub icon: {str(e)}"
+        )
+
+
+# ============================================
+# Avatar Upload Endpoints
+# ============================================
+
+@router.post("/profile/avatar")
+async def upload_profile_avatar(
+    avatar: UploadFile = File(...),
+    session: Dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Upload user profile avatar image
+    
+    - Accepts image file upload
+    - Stores file with unique filename
+    - Updates user profile avatar_url
+    - Sets avatar display mode to 'custom' (ID: 25)
+    """
+    try:
+        user_id = session.get("user_id")
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User ID not found in session"
+            )
+        
+        # Validate file type
+        if not avatar.content_type or not avatar.content_type.startswith('image/'):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File must be an image"
+            )
+        
+        # Create uploads directory if it doesn't exist
+        upload_dir = Path("uploads/avatars")
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Generate unique filename
+        file_extension = Path(avatar.filename).suffix if avatar.filename else '.jpg'
+        unique_filename = f"{uuid.uuid4()}{file_extension}"
+        file_path = upload_dir / unique_filename
+        
+        # Save file
+        contents = await avatar.read()
+        with open(file_path, 'wb') as f:
+            f.write(contents)
+        
+        # Update user profile
+        result = await db.execute(
+            select(UserProfile)
+            .where(UserProfile.user_id == user_id)
+        )
+        profile = result.scalar_one_or_none()
+        
+        if not profile:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User profile not found"
+            )
+        
+        # Update avatar_url and set display mode to custom (25)
+        profile.avatar_url = f"/uploads/avatars/{unique_filename}"
+        profile.avatar_display_option_value_id = 25  # 'custom' display mode
+        
+        await db.commit()
+        
+        logger.info("=== PROFILE AVATAR UPLOADED ===",
+                   user_id=user_id,
+                   filename=unique_filename,
+                   avatar_url=profile.avatar_url)
+        
+        return {
+            "message": "Avatar uploaded successfully",
+            "avatar_url": profile.avatar_url
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error("=== FAILED TO UPLOAD PROFILE AVATAR ===",
+                    user_id=session.get("user_id"),
+                    error=str(e),
+                    error_type=type(e).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload avatar: {str(e)}"
+        )
+
+
+@router.post("/smart-hub/avatar")
+async def upload_smart_hub_avatar(
+    smart_hub_id: int,
+    avatar: UploadFile = File(...),
+    session: Dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Upload smart hub avatar image
+    
+    - Accepts image file upload
+    - Stores file with unique filename
+    - Updates smart hub avatar_url
+    - Sets avatar display mode to 'custom' (ID: 25)
+    """
+    try:
+        user_id = session.get("user_id")
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User ID not found in session"
+            )
+        
+        # Verify smart hub exists and belongs to user
+        result = await db.execute(
+            select(SmartHub)
+            .where(SmartHub.id == smart_hub_id)
+            .where(SmartHub.user_id == user_id)
+        )
+        smart_hub = result.scalar_one_or_none()
+        
+        if not smart_hub:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Smart hub not found or access denied"
+            )
+        
+        # Validate file type
+        if not avatar.content_type or not avatar.content_type.startswith('image/'):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File must be an image"
+            )
+        
+        # Create uploads directory if it doesn't exist
+        upload_dir = Path("uploads/smart-hub-avatars")
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Generate unique filename
+        file_extension = Path(avatar.filename).suffix if avatar.filename else '.jpg'
+        unique_filename = f"{uuid.uuid4()}{file_extension}"
+        file_path = upload_dir / unique_filename
+        
+        # Save file
+        contents = await avatar.read()
+        with open(file_path, 'wb') as f:
+            f.write(contents)
+        
+        # Update smart hub avatar and set display mode to custom (25)
+        smart_hub.avatar = f"/uploads/smart-hub-avatars/{unique_filename}"
+        smart_hub.avatar_display_option_value_id = 25  # 'custom' display mode
+        
+        await db.commit()
+        
+        logger.info("=== SMART HUB AVATAR UPLOADED ===",
+                   user_id=user_id,
+                   smart_hub_id=smart_hub_id,
+                   filename=unique_filename,
+                   avatar_url=smart_hub.avatar)
+        
+        return {
+            "message": "Smart hub avatar uploaded successfully",
+            "smart_hub_id": smart_hub_id,
+            "avatar_url": smart_hub.avatar
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error("=== FAILED TO UPLOAD SMART HUB AVATAR ===",
+                    user_id=session.get("user_id"),
+                    smart_hub_id=smart_hub_id,
+                    error=str(e),
+                    error_type=type(e).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload smart hub avatar: {str(e)}"
+        )
+

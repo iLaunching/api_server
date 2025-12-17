@@ -867,3 +867,153 @@ async def update_smart_hub_color(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update smart hub color: {str(e)}"
         )
+
+
+@router.patch("/smart-hub/icon")
+async def update_smart_hub_icon(
+    smart_hub_id: str,
+    smartHub_icon_id: int,
+    session: Dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Update smart hub's icon - Direct access with smart_hub_id
+    """
+    try:
+        user_id = session.get("user_id")
+        
+        if not user_id:
+            logger.error("No user_id in session")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User ID not found in session"
+            )
+        
+        logger.info("=== UPDATING SMART HUB ICON ===", 
+                   user_id=user_id,
+                   smart_hub_id=smart_hub_id,
+                   smartHub_icon_id=smartHub_icon_id)
+        
+        # Update the smartHub_icon_id and set avatar_display_option to 'icon' (ID: 26)
+        update_query = text("""
+            UPDATE smart_hubs 
+            SET smartHub_icon_id = :smartHub_icon_id,
+                avatar_display_option_value_id = 26
+            WHERE id = :smart_hub_id
+        """)
+        
+        result = await db.execute(
+            update_query,
+            {
+                "smartHub_icon_id": smartHub_icon_id,
+                "smart_hub_id": smart_hub_id
+            }
+        )
+        
+        logger.info("Update executed", rowcount=result.rowcount)
+        
+        if result.rowcount == 0:
+            logger.error("No rows updated - smart hub not found", smart_hub_id=smart_hub_id)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Smart hub not found"
+            )
+        
+        await db.commit()
+        
+        logger.info("=== SMART HUB ICON UPDATED SUCCESSFULLY ===", 
+                   user_id=user_id,
+                   smart_hub_id=smart_hub_id,
+                   smartHub_icon_id=smartHub_icon_id)
+        
+        return {
+            "message": "Smart hub icon updated successfully",
+            "smart_hub_id": smart_hub_id,
+            "smartHub_icon_id": smartHub_icon_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error("=== FAILED TO UPDATE SMART HUB ICON ===", 
+                    user_id=session.get("user_id"),
+                    smart_hub_id=smart_hub_id,
+                    smartHub_icon_id=smartHub_icon_id,
+                    error=str(e),
+                    error_type=type(e).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update smart hub icon: {str(e)}"
+        )
+
+
+@router.delete("/smart-hub/icon")
+async def clear_smart_hub_icon(
+    smart_hub_id: str,
+    session: Dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Clear smart hub's icon and reset to default avatar display - Direct access with smart_hub_id
+    """
+    try:
+        user_id = session.get("user_id")
+        
+        if not user_id:
+            logger.error("No user_id in session")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User ID not found in session"
+            )
+        
+        logger.info("=== CLEARING SMART HUB ICON ===", 
+                   user_id=user_id,
+                   smart_hub_id=smart_hub_id)
+        
+        # Clear smartHub_icon_id and set avatar_display_option to 'default' (ID: 24)
+        update_query = text("""
+            UPDATE smart_hubs 
+            SET smartHub_icon_id = NULL,
+                avatar_display_option_value_id = 24
+            WHERE id = :smart_hub_id
+        """)
+        
+        result = await db.execute(
+            update_query,
+            {"smart_hub_id": smart_hub_id}
+        )
+        
+        logger.info("Update executed", rowcount=result.rowcount)
+        
+        if result.rowcount == 0:
+            logger.error("No rows updated - smart hub not found", smart_hub_id=smart_hub_id)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Smart hub not found"
+            )
+        
+        await db.commit()
+        
+        logger.info("=== SMART HUB ICON CLEARED SUCCESSFULLY ===", 
+                   user_id=user_id,
+                   smart_hub_id=smart_hub_id)
+        
+        return {
+            "message": "Smart hub icon cleared successfully",
+            "smart_hub_id": smart_hub_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error("=== FAILED TO CLEAR SMART HUB ICON ===", 
+                    user_id=session.get("user_id"),
+                    smart_hub_id=smart_hub_id,
+                    error=str(e),
+                    error_type=type(e).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to clear smart hub icon: {str(e)}"
+        )

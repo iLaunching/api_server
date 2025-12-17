@@ -192,6 +192,18 @@ async def get_current_smart_hub(
             except Exception as e:
                 logger.warning("Failed to load hub color from relationship, using default", error=str(e), hub_color_id=hub.hub_color_id)
             
+            # Extract hub icon metadata from relationship (same pattern as profile_icon)
+            hub_icon_metadata = None
+            if hub.smartHub_icon:
+                try:
+                    if hasattr(hub.smartHub_icon, 'theme_config') and hub.smartHub_icon.theme_config:
+                        hub_icon_metadata = hub.smartHub_icon.theme_config.theme_metadata or {}
+                        logger.info("Hub icon loaded from relationship", 
+                                   icon_name=hub_icon_metadata.get("icon_name"),
+                                   icon_prefix=hub_icon_metadata.get("icon_prefix"))
+                except Exception as e:
+                    logger.warning("Failed to load hub icon metadata", error=str(e))
+            
             smart_hub_data = {
                 "id": str(hub.id),
                 "name": hub.name,
@@ -199,6 +211,15 @@ async def get_current_smart_hub(
                 "avatar": hub.avatar,
                 "hub_color": hub_color,
                 "hub_color_id": hub.hub_color_id,
+                "smartHub_icon_id": hub.smartHub_icon_id,
+                "avatar_display_option_value_id": hub.avatar_display_option_value_id,
+                "smartHub_icon": {
+                    "id": hub.smartHub_icon.id,
+                    "value_name": hub.smartHub_icon.value_name,
+                    "display_name": hub.smartHub_icon.display_name,
+                    "icon_name": hub_icon_metadata.get("icon_name") if hub_icon_metadata else None,
+                    "icon_prefix": hub_icon_metadata.get("icon_prefix") if hub_icon_metadata else None
+                } if hub.smartHub_icon and hub_icon_metadata else None,
                 "journey": hub.journey or "Validate Journey",  # Per-hub journey tier
                 "owner_id": str(hub.owner_id),
                 "is_default": hub.is_default,

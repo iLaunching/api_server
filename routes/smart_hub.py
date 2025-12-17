@@ -76,16 +76,23 @@ async def get_current_smart_hub(
                 # Load profile icon
                 selectinload(UserProfile.profile_icon),
                 
-                # Load smart hubs with hub colors
+                # Load smart hubs with hub colors and icons
                 selectinload(UserProfile.smart_hubs)
                 .selectinload(SmartHub.hub_color)
                 .selectinload(OptionValue.theme_config),
                 
-                # Load navigation with current smart hub and its hub_color relationship
+                selectinload(UserProfile.smart_hubs)
+                .selectinload(SmartHub.smartHub_icon),
+                
+                # Load navigation with current smart hub and its hub_color and icon relationships
                 selectinload(UserProfile.navigation)
                 .selectinload(UserNavigation.current_smart_hub)
                 .selectinload(SmartHub.hub_color)
-                .selectinload(OptionValue.theme_config)
+                .selectinload(OptionValue.theme_config),
+                
+                selectinload(UserProfile.navigation)
+                .selectinload(UserNavigation.current_smart_hub)
+                .selectinload(SmartHub.smartHub_icon)
             )
             .where(UserProfile.user_id == user_id)
         )

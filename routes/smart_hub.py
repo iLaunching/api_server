@@ -4,11 +4,14 @@ API endpoints for Smart Hub management and current user profile
 """
 
 from typing import Optional, Dict, Any
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 from sqlalchemy.orm import selectinload
 import structlog
+import os
+import uuid
+from pathlib import Path
 
 from config.database import get_db
 from auth.middleware import get_current_session
@@ -1067,3 +1070,185 @@ async def clear_smart_hub_icon(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to clear smart hub icon: {str(e)}"
         )
+
+
+# ============================================
+# Avatar Upload Endpoints
+# ============================================
+
+@router.post("/profile/avatar")
+async def upload_profile_avatar(
+    avatar: UploadFile = File(...),
+    session: Dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Upload user profile avatar image
+    
+    - Accepts image file upload
+    - Stores file with unique filename
+    - Updates user profile avatar_url
+    - Sets avatar display mode to 'custom' (ID: 25)
+    """
+    try:
+        user_id = session.get("user_id")
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User ID not found in session"
+            )
+        
+        # Validate file type
+        if not avatar.content_type or not avatar.content_type.startswith('image/'):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File must be an image"
+            )
+        
+        # Create uploads directory if it doesn't exist
+        upload_dir = Path("uploads/avatars")
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Generate unique filename
+        file_extension = Path(avatar.filename).suffix if avatar.filename else '.jpg'
+        unique_filename = f"{uuid.uuid4()}{file_extension}"
+        file_path = upload_dir / unique_filename
+        
+        # Save file
+        contents = await avatar.read()
+        with open(file_path, 'wb') as f:
+            f.write(contents)
+        
+        # Update user profile
+        result = await db.execute(
+            select(UserProfile)
+            .where(UserProfile.user_id == user_id)
+        )
+        profile = result.scalar_one_or_none()
+        
+        if not profile:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User profile not found"
+            )
+        
+        # Update avatar_url and set display mode to custom (25)
+        profile.avatar_url = f"/uploads/avatars/{unique_filename}"
+        profile.avatar_display_option_value_id = 25  # 'custom' display mode
+        
+        await db.commit()
+        
+        logger.info("=== PROFILE AVATAR UPLOADED ===",
+                   user_id=user_id,
+                   filename=unique_filename,
+                   avatar_url=profile.avatar_url)
+        
+        return {
+            "message": "Avatar uploaded successfully",
+            "avatar_url": profile.avatar_url
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error("=== FAILED TO UPLOAD PROFILE AVATAR ===",
+                    user_id=session.get("user_id"),
+                    error=str(e),
+                    error_type=type(e).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload avatar: {str(e)}"
+        )
+
+
+@router.post("/smart-hub/avatar")
+async def upload_smart_hub_avatar(
+    smart_hub_id: int,
+    avatar: UploadFile = File(...),
+    session: Dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Upload smart hub avatar image
+    
+    - Accepts image file upload
+    - Stores file with unique filename
+    - Updates smart hub avatar_url
+    - Sets avatar display mode to 'custom' (ID: 25)
+    """
+    try:
+        user_id = session.get("user_id")
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User ID not found in session"
+            )
+        
+        # Verify smart hub exists and belongs to user
+        result = await db.execute(
+            select(SmartHub)
+            .where(SmartHub.id == smart_hub_id)
+            .where(SmartHub.user_id == user_id)
+        )
+        smart_hub = result.scalar_one_or_none()
+        
+        if not smart_hub:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Smart hub not found or access denied"
+            )
+        
+        # Validate file type
+        if not avatar.content_type or not avatar.content_type.startswith('image/'):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File must be an image"
+            )
+        
+        # Create uploads directory if it doesn't exist
+        upload_dir = Path("uploads/smart-hub-avatars")
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Generate unique filename
+        file_extension = Path(avatar.filename).suffix if avatar.filename else '.jpg'
+        unique_filename = f"{uuid.uuid4()}{file_extension}"
+        file_path = upload_dir / unique_filename
+        
+        # Save file
+        contents = await avatar.read()
+        with open(file_path, 'wb') as f:
+            f.write(contents)
+        
+        # Update smart hub avatar_url and set display mode to custom (25)
+        smart_hub.avatar_url = f"/uploads/smart-hub-avatars/{unique_filename}"
+        smart_hub.avatar_display_option_value_id = 25  # 'custom' display mode
+        
+        await db.commit()
+        
+        logger.info("=== SMART HUB AVATAR UPLOADED ===",
+                   user_id=user_id,
+                   smart_hub_id=smart_hub_id,
+                   filename=unique_filename,
+                   avatar_url=smart_hub.avatar_url)
+        
+        return {
+            "message": "Smart hub avatar uploaded successfully",
+            "smart_hub_id": smart_hub_id,
+            "avatar_url": smart_hub.avatar_url
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error("=== FAILED TO UPLOAD SMART HUB AVATAR ===",
+                    user_id=session.get("user_id"),
+                    smart_hub_id=smart_hub_id,
+                    error=str(e),
+                    error_type=type(e).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload smart hub avatar: {str(e)}"
+        )
+

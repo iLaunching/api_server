@@ -1220,8 +1220,8 @@ async def upload_smart_hub_avatar(
         with open(file_path, 'wb') as f:
             f.write(contents)
         
-        # Update smart hub avatar_url and set display mode to custom (25)
-        smart_hub.avatar_url = f"/uploads/smart-hub-avatars/{unique_filename}"
+        # Update smart hub avatar and set display mode to custom (25)
+        smart_hub.avatar = f"/uploads/smart-hub-avatars/{unique_filename}"
         smart_hub.avatar_display_option_value_id = 25  # 'custom' display mode
         
         await db.commit()
@@ -1230,12 +1230,12 @@ async def upload_smart_hub_avatar(
                    user_id=user_id,
                    smart_hub_id=smart_hub_id,
                    filename=unique_filename,
-                   avatar_url=smart_hub.avatar_url)
+                   avatar_url=smart_hub.avatar)
         
         return {
             "message": "Smart hub avatar uploaded successfully",
             "smart_hub_id": smart_hub_id,
-            "avatar_url": smart_hub.avatar_url
+            "avatar_url": smart_hub.avatar
         }
         
     except HTTPException:

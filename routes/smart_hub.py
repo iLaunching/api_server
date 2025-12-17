@@ -922,10 +922,10 @@ async def update_smart_hub_icon(
                    smart_hub_id=smart_hub_id,
                    smartHub_icon_id=smartHub_icon_id)
         
-        # Update the smartHub_icon_id and set avatar_display_option to 'icon' (ID: 26)
+        # Update the smarthub_icon_id and set avatar_display_option to 'icon' (ID: 26)
         update_query = text("""
             UPDATE smart_hubs 
-            SET smartHub_icon_id = :smartHub_icon_id,
+            SET smarthub_icon_id = :smartHub_icon_id,
                 avatar_display_option_value_id = 26
             WHERE id = :smart_hub_id
         """)
@@ -999,10 +999,10 @@ async def clear_smart_hub_icon(
                    user_id=user_id,
                    smart_hub_id=smart_hub_id)
         
-        # Clear smartHub_icon_id and set avatar_display_option to 'default' (ID: 24)
+        # Clear smarthub_icon_id and set avatar_display_option to 'default' (ID: 24)
         update_query = text("""
             UPDATE smart_hubs 
-            SET smartHub_icon_id = NULL,
+            SET smarthub_icon_id = NULL,
                 avatar_display_option_value_id = 24
             WHERE id = :smart_hub_id
         """)

@@ -393,7 +393,7 @@ class SmartHub(Base):
     description = Column(Text)
     avatar = Column(Text)  # Avatar image/icon for the hub
     hub_color_id = Column(Integer, ForeignKey("option_values.id", ondelete="SET NULL"), nullable=True, index=True)  # FK to smarthub_color_scheme option set
-    smartHub_icon_id = Column(Integer, ForeignKey("option_values.id", ondelete="SET NULL"), nullable=True, index=True)  # FK to avatar_library option set
+    smartHub_icon_id = Column('smarthub_icon_id', Integer, ForeignKey("option_values.id", ondelete="SET NULL"), nullable=True, index=True)  # FK to avatar_library option set
     avatar_display_option_value_id = Column(Integer, nullable=True, index=True, default=24)  # 24=default/initials, 25=image, 26=icon
     use_case_id = Column(Integer, ForeignKey("option_values.id", ondelete="SET NULL"), nullable=True, index=True)  # FK to smart_hub_use_case option set
     order_number = Column(Integer, default=0)  # Display order for user's hubs

@@ -192,52 +192,39 @@ async def get_current_smart_hub(
             except Exception as e:
                 logger.warning("Failed to load hub color from relationship, using default", error=str(e), hub_color_id=hub.hub_color_id)
             
-            # Extract hub icon metadata from option_value (icons don't use theme_config)
+            # Extract hub icon metadata from icon_metadata table (same as profile icons)
             hub_icon_metadata = None
             logger.info("Checking hub icon relationship", 
                        smartHub_icon_id=hub.smartHub_icon_id,
                        has_smartHub_icon=hub.smartHub_icon is not None)
             
-            if hub.smartHub_icon:
+            if hub.smartHub_icon_id:
                 try:
-                    # Parse icon data from value_name (format: icon_fa-icon-name)
-                    value_name = hub.smartHub_icon.value_name
-                    if value_name and value_name.startswith('icon_'):
-                        # Remove 'icon_' prefix
-                        icon_part = value_name[5:]  # Skip 'icon_'
-                        # Icon format is typically: fa-icon-name or fas-icon-name
-                        if icon_part.startswith('fa-') or icon_part.startswith('fas-') or icon_part.startswith('far-') or icon_part.startswith('fab-'):
-                            # Extract prefix and icon name
-                            if icon_part.startswith('fas-'):
-                                icon_prefix = 'fas'
-                                icon_name = icon_part[4:]  # Skip 'fas-'
-                            elif icon_part.startswith('far-'):
-                                icon_prefix = 'far'
-                                icon_name = icon_part[4:]  # Skip 'far-'
-                            elif icon_part.startswith('fab-'):
-                                icon_prefix = 'fab'
-                                icon_name = icon_part[4:]  # Skip 'fab-'
-                            else:  # fa-
-                                icon_prefix = 'fas'  # Default to solid
-                                icon_name = icon_part[3:]  # Skip 'fa-'
-                            
-                            hub_icon_metadata = {
-                                'icon_name': icon_name,
-                                'icon_prefix': icon_prefix
-                            }
-                            logger.info("Hub icon parsed from value_name", 
-                                       value_name=value_name,
-                                       icon_name=icon_name,
-                                       icon_prefix=icon_prefix)
-                        else:
-                            logger.warning("Icon value_name doesn't match expected format", value_name=value_name)
+                    # Query icon_metadata table for icon details
+                    icon_result = await db.execute(
+                        text("""
+                            SELECT icon_name, icon_prefix
+                            FROM icon_metadata
+                            WHERE option_value_id = :icon_id
+                        """),
+                        {"icon_id": hub.smartHub_icon_id}
+                    )
+                    icon_row = icon_result.fetchone()
+                    if icon_row:
+                        hub_icon_metadata = {
+                            'icon_name': icon_row[0],
+                            'icon_prefix': icon_row[1]
+                        }
+                        logger.info("Hub icon loaded from icon_metadata table", 
+                                   icon_name=icon_row[0],
+                                   icon_prefix=icon_row[1])
                     else:
-                        logger.warning("Icon value_name missing or invalid", value_name=value_name)
+                        logger.warning("No icon_metadata found for smartHub_icon_id", 
+                                     smartHub_icon_id=hub.smartHub_icon_id)
                 except Exception as e:
-                    logger.warning("Failed to parse hub icon metadata", error=str(e))
-            else:
-                logger.warning("Hub icon relationship is None despite having smartHub_icon_id", 
-                             smartHub_icon_id=hub.smartHub_icon_id)
+                    logger.error("Failed to load hub icon metadata from icon_metadata table", 
+                               error=str(e),
+                               smartHub_icon_id=hub.smartHub_icon_id)
             
             smart_hub_data = {
                 "id": str(hub.id),

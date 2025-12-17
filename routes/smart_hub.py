@@ -775,3 +775,107 @@ async def clear_profile_icon(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to clear profile icon: {str(e)}"
         )
+
+
+@router.patch("/smart-hub/color")
+async def update_smart_hub_color(
+    hub_color_id: int,
+    session: Dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Update the current smart hub's color scheme
+    """
+    try:
+        user_id = session.get("user_id")
+        
+        if not user_id:
+            logger.error("No user_id in session")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User ID not found in session"
+            )
+        
+        logger.info("=== UPDATING SMART HUB COLOR ===", 
+                   user_id=user_id, 
+                   hub_color_id=hub_color_id)
+        
+        # Verify the color option exists and is from smarthub_colors option set
+        color_query = select(OptionValue).where(
+            OptionValue.id == hub_color_id
+        )
+        color_result = await db.execute(color_query)
+        color_option = color_result.scalar_one_or_none()
+        
+        if not color_option:
+            logger.error("Invalid hub_color_id", hub_color_id=hub_color_id)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid hub color ID: {hub_color_id}"
+            )
+        
+        # Get current smart hub from navigation
+        nav_query = select(UserNavigation).where(
+            UserNavigation.user_profile_id == user_id
+        )
+        nav_result = await db.execute(nav_query)
+        navigation = nav_result.scalar_one_or_none()
+        
+        if not navigation or not navigation.current_smart_hub_id:
+            logger.error("No current smart hub found", user_id=user_id)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No active smart hub found"
+            )
+        
+        # Update smart hub color
+        update_query = text("""
+            UPDATE smart_hubs 
+            SET hub_color_id = :hub_color_id
+            WHERE id = :smart_hub_id
+        """)
+        
+        result = await db.execute(
+            update_query,
+            {
+                "hub_color_id": hub_color_id,
+                "smart_hub_id": navigation.current_smart_hub_id
+            }
+        )
+        
+        logger.info("Update executed", rowcount=result.rowcount)
+        
+        if result.rowcount == 0:
+            logger.error("No rows updated - smart hub not found", 
+                        smart_hub_id=navigation.current_smart_hub_id)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Smart hub not found"
+            )
+        
+        await db.commit()
+        
+        logger.info("=== SMART HUB COLOR UPDATED SUCCESSFULLY ===", 
+                   user_id=user_id,
+                   smart_hub_id=navigation.current_smart_hub_id,
+                   hub_color_id=hub_color_id)
+        
+        return {
+            "message": "Smart hub color updated successfully",
+            "smart_hub_id": navigation.current_smart_hub_id,
+            "hub_color_id": hub_color_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error("=== FAILED TO UPDATE SMART HUB COLOR ===", 
+                    user_id=session.get("user_id"), 
+                    hub_color_id=hub_color_id,
+                    error=str(e),
+                    error_type=type(e).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update smart hub color: {str(e)}"
+        )

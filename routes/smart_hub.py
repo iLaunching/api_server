@@ -82,8 +82,7 @@ async def get_current_smart_hub(
                 .selectinload(OptionValue.theme_config),
                 
                 selectinload(UserProfile.smart_hubs)
-                .selectinload(SmartHub.smartHub_icon)
-                .selectinload(OptionValue.theme_config),
+                .selectinload(SmartHub.smartHub_icon),
                 
                 # Load navigation with current smart hub and its hub_color and icon relationships
                 selectinload(UserProfile.navigation)
@@ -94,7 +93,6 @@ async def get_current_smart_hub(
                 selectinload(UserProfile.navigation)
                 .selectinload(UserNavigation.current_smart_hub)
                 .selectinload(SmartHub.smartHub_icon)
-                .selectinload(OptionValue.theme_config)
             )
             .where(UserProfile.user_id == user_id)
         )
@@ -194,7 +192,7 @@ async def get_current_smart_hub(
             except Exception as e:
                 logger.warning("Failed to load hub color from relationship, using default", error=str(e), hub_color_id=hub.hub_color_id)
             
-            # Extract hub icon metadata from relationship (same pattern as profile_icon)
+            # Extract hub icon metadata from option_value (icons don't use theme_config)
             hub_icon_metadata = None
             logger.info("Checking hub icon relationship", 
                        smartHub_icon_id=hub.smartHub_icon_id,
@@ -202,15 +200,41 @@ async def get_current_smart_hub(
             
             if hub.smartHub_icon:
                 try:
-                    if hasattr(hub.smartHub_icon, 'theme_config') and hub.smartHub_icon.theme_config:
-                        hub_icon_metadata = hub.smartHub_icon.theme_config.theme_metadata or {}
-                        logger.info("Hub icon loaded from relationship", 
-                                   icon_name=hub_icon_metadata.get("icon_name"),
-                                   icon_prefix=hub_icon_metadata.get("icon_prefix"))
+                    # Parse icon data from value_name (format: icon_fa-icon-name)
+                    value_name = hub.smartHub_icon.value_name
+                    if value_name and value_name.startswith('icon_'):
+                        # Remove 'icon_' prefix
+                        icon_part = value_name[5:]  # Skip 'icon_'
+                        # Icon format is typically: fa-icon-name or fas-icon-name
+                        if icon_part.startswith('fa-') or icon_part.startswith('fas-') or icon_part.startswith('far-') or icon_part.startswith('fab-'):
+                            # Extract prefix and icon name
+                            if icon_part.startswith('fas-'):
+                                icon_prefix = 'fas'
+                                icon_name = icon_part[4:]  # Skip 'fas-'
+                            elif icon_part.startswith('far-'):
+                                icon_prefix = 'far'
+                                icon_name = icon_part[4:]  # Skip 'far-'
+                            elif icon_part.startswith('fab-'):
+                                icon_prefix = 'fab'
+                                icon_name = icon_part[4:]  # Skip 'fab-'
+                            else:  # fa-
+                                icon_prefix = 'fas'  # Default to solid
+                                icon_name = icon_part[3:]  # Skip 'fa-'
+                            
+                            hub_icon_metadata = {
+                                'icon_name': icon_name,
+                                'icon_prefix': icon_prefix
+                            }
+                            logger.info("Hub icon parsed from value_name", 
+                                       value_name=value_name,
+                                       icon_name=icon_name,
+                                       icon_prefix=icon_prefix)
+                        else:
+                            logger.warning("Icon value_name doesn't match expected format", value_name=value_name)
                     else:
-                        logger.warning("Hub icon loaded but has no theme_config")
+                        logger.warning("Icon value_name missing or invalid", value_name=value_name)
                 except Exception as e:
-                    logger.warning("Failed to load hub icon metadata", error=str(e))
+                    logger.warning("Failed to parse hub icon metadata", error=str(e))
             else:
                 logger.warning("Hub icon relationship is None despite having smartHub_icon_id", 
                              smartHub_icon_id=hub.smartHub_icon_id)

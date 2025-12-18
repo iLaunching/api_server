@@ -159,6 +159,8 @@ async def get_current_smart_hub(
                 "border_line_color_light": theme_config.border_line_color_light or "#d6d6d680",
                 "global_button_hover": theme_config.global_button_hover or "#d6d6d64d",
                 "chat_bk_1": theme_config.chat_bk_1,  # Chat background gradient
+                "prompt_bk": theme_config.prompt_bk,  # Prompt background color
+                "prompt_text_color": theme_config.prompt_text_color,  # Prompt text color
                 # Add appearance theme metadata properties
                 "feedback_indicator_bk": appearance_metadata.get("feedback_indicator_bk", "#7F77F1")
             }

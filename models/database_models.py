@@ -357,6 +357,8 @@ class ThemeConfig(Base):
     border_line_color_light = Column(String(9))  # Light border with transparency
     global_button_hover = Column(String(9))  # Global button hover color with transparency
     chat_bk_1 = Column(Text)  # Chat background gradient (CSS linear-gradient format)
+    prompt_bk = Column(String(9))  # Prompt background color (hex with optional alpha)
+    prompt_text_color = Column(String(7))  # Prompt text color (hex)
     theme_metadata = Column(JSONB, default={})  # Additional theme properties (renamed from metadata)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     

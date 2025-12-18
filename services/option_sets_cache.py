@@ -42,6 +42,9 @@ class OptionSetsCache:
                         tc.menu_color,
                         tc.border_line_color,
                         tc.chat_bk_1,
+                        tc.prompt_bk,
+                        tc.prompt_text_color,
+                        tc.ai_acknowledge_text_color,
                         tc.theme_metadata as metadata,
                         im.icon_name,
                         im.icon_prefix,
@@ -86,6 +89,9 @@ class OptionSetsCache:
                         'menu_color': row.menu_color,
                         'border_line_color': row.border_line_color,
                         'chat_bk_1': row.chat_bk_1,
+                        'prompt_bk': row.prompt_bk,
+                        'prompt_text_color': row.prompt_text_color,
+                        'ai_acknowledge_text_color': row.ai_acknowledge_text_color,
                         'metadata': metadata
                     }
                 

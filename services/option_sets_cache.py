@@ -41,6 +41,7 @@ class OptionSetsCache:
                         tc.background_color,
                         tc.menu_color,
                         tc.border_line_color,
+                        tc.chat_bk_1,
                         tc.theme_metadata as metadata,
                         im.icon_name,
                         im.icon_prefix,
@@ -84,6 +85,7 @@ class OptionSetsCache:
                         'background_color': row.background_color,
                         'menu_color': row.menu_color,
                         'border_line_color': row.border_line_color,
+                        'chat_bk_1': row.chat_bk_1,
                         'metadata': metadata
                     }
                 

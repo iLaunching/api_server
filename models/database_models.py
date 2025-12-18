@@ -356,6 +356,7 @@ class ThemeConfig(Base):
     title_menu_color_light = Column(String(7))  # Light title/menu text color
     border_line_color_light = Column(String(9))  # Light border with transparency
     global_button_hover = Column(String(9))  # Global button hover color with transparency
+    chat_bk_1 = Column(Text)  # Chat background gradient (CSS linear-gradient format)
     theme_metadata = Column(JSONB, default={})  # Additional theme properties (renamed from metadata)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     

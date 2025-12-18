@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS theme_configs (
     user_button_icon VARCHAR(7),
     title_menu_color_light VARCHAR(7),
     border_line_color_light VARCHAR(9),
+    chat_bk_1 TEXT,
     theme_metadata JSONB DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -85,11 +86,19 @@ BEGIN
     SELECT id INTO star_value_id FROM option_values WHERE option_set_id = appearance_set_id AND value_name = 'star';
     
     -- Insert theme configurations with final hardcoded colors and button colors
-    INSERT INTO theme_configs (option_value_id, name, text_color, background_color, menu_color, border_line_color, header_overlay_color, user_button_color, user_button_hover, user_button_icon, title_menu_color_light, border_line_color_light, global_button_hover) VALUES 
-        (sun_value_id, 'Sun', '#000000', '#FFFFFF', '#FFFFFF', '#d6d6d6', '#00000080', '#ffffff59', '#ffffff66', '#000000', '#d6d6d6', '#d6d6d659', '#d6d6d64d'),
-        (moon_value_id, 'Moon', '#d6d6d6', '#2F2F2F', '#464545', '#62676F', '#00000000', '#ffffff59', '#ffffff66', '#000000', '#62676F', '#62676F59', '#d6d6d64d'),
-        (space_value_id, 'Space', '#ffffff', '#2A2E35', '#3A3F47', '#62676F', '#00000000', '#505663', '#505663cc', '#ffffff', '#62676F', '#62676F59', '#d6d6d64d'),
-        (star_value_id, 'Star', '#ffffff', '#181B34', '#292F4C', '#616daa', '#00000000', '#181B34', '#181B34cc', '#ffffff', '#616daa', '#616daa59', '#d6d6d64d')
+    INSERT INTO theme_configs (option_value_id, name, text_color, background_color, menu_color, border_line_color, header_overlay_color, user_button_color, user_button_hover, user_button_icon, title_menu_color_light, border_line_color_light, global_button_hover, chat_bk_1, theme_metadata) VALUES 
+        (sun_value_id, 'Sun', '#000000', '#FFFFFF', '#FFFFFF', '#d6d6d6', '#00000080', '#ffffff59', '#ffffff66', '#000000', '#d6d6d6', '#d6d6d659', '#d6d6d64d', 
+         'linear-gradient(90deg, rgba(255, 255, 255, 0.64) 0%, rgba(255, 255, 255, 0.93) 38%, rgba(255, 255, 255, 0.84) 82%)',
+         '{"chat_bk_1": "linear-gradient(90deg, rgba(255, 255, 255, 0.64) 0%, rgba(255, 255, 255, 0.93) 38%, rgba(255, 255, 255, 0.84) 82%)"}'::jsonb),
+        (moon_value_id, 'Moon', '#d6d6d6', '#2F2F2F', '#464545', '#62676F', '#00000000', '#ffffff59', '#ffffff66', '#000000', '#62676F', '#62676F59', '#d6d6d64d', 
+         'linear-gradient(90deg, rgba(70, 69, 69, 0.35) 0%, rgba(70, 69, 69, 1) 45%, rgba(70, 69, 69, 0.41) 82%)',
+         '{"chat_bk_1": "linear-gradient(90deg, rgba(70, 69, 69, 0.35) 0%, rgba(70, 69, 69, 1) 45%, rgba(70, 69, 69, 0.41) 82%)"}'::jsonb),
+        (space_value_id, 'Space', '#ffffff', '#2A2E35', '#3A3F47', '#62676F', '#00000000', '#505663', '#505663cc', '#ffffff', '#62676F', '#62676F59', '#d6d6d64d', 
+         'linear-gradient(90deg, rgba(58, 63, 71, 0.35) 0%, rgba(58, 63, 71, 1) 45%, rgba(58, 63, 71, 0.41) 82%)',
+         '{"chat_bk_1": "linear-gradient(90deg, rgba(58, 63, 71, 0.35) 0%, rgba(58, 63, 71, 1) 45%, rgba(58, 63, 71, 0.41) 82%)"}'::jsonb),
+        (star_value_id, 'Star', '#ffffff', '#181B34', '#292F4C', '#616daa', '#00000000', '#181B34', '#181B34cc', '#ffffff', '#616daa', '#616daa59', '#d6d6d64d', 
+         'linear-gradient(90deg, rgba(41, 47, 76, 0.35) 0%, rgba(41, 47, 76, 1) 45%, rgba(41, 47, 76, 0.41) 82%)',
+         '{"chat_bk_1": "linear-gradient(90deg, rgba(41, 47, 76, 0.35) 0%, rgba(41, 47, 76, 1) 45%, rgba(41, 47, 76, 0.41) 82%)"}'::jsonb)
     ON CONFLICT (option_value_id) DO NOTHING;
     
 END $$;
@@ -205,3 +214,4 @@ COMMENT ON COLUMN theme_configs.user_button_hover IS 'User menu button hover sta
 COMMENT ON COLUMN theme_configs.user_button_icon IS 'User menu button icon color (hex format: #RRGGBB)';
 COMMENT ON COLUMN theme_configs.title_menu_color_light IS 'Light title/menu text color (hex format: #RRGGBB)';
 COMMENT ON COLUMN theme_configs.border_line_color_light IS 'Light border/line color with transparency (hex format: #RRGGBBAA)';
+COMMENT ON COLUMN theme_configs.chat_bk_1 IS 'Chat background gradient (CSS linear-gradient format)';

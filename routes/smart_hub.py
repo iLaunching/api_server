@@ -161,6 +161,7 @@ async def get_current_smart_hub(
                 "chat_bk_1": theme_config.chat_bk_1,  # Chat background gradient
                 "prompt_bk": theme_config.prompt_bk,  # Prompt background color
                 "prompt_text_color": theme_config.prompt_text_color,  # Prompt text color
+                "ai_acknowledge_text_color": theme_config.ai_acknowledge_text_color,  # AI acknowledgment text color
                 # Add appearance theme metadata properties
                 "feedback_indicator_bk": appearance_metadata.get("feedback_indicator_bk", "#7F77F1")
             }

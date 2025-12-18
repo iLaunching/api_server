@@ -359,6 +359,7 @@ class ThemeConfig(Base):
     chat_bk_1 = Column(Text)  # Chat background gradient (CSS linear-gradient format)
     prompt_bk = Column(String(9))  # Prompt background color (hex with optional alpha)
     prompt_text_color = Column(String(7))  # Prompt text color (hex)
+    ai_acknowledge_text_color = Column(String(7))  # AI acknowledgment indicator text color (hex)
     theme_metadata = Column(JSONB, default={})  # Additional theme properties (renamed from metadata)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     

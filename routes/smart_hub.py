@@ -173,6 +173,7 @@ async def get_current_smart_hub(
                 theme_data["header_background"] = solid_color_value  # Default to ipurple
                 theme_data["solid_color"] = solid_color_value  # Add solid_color for frontend components
                 theme_data["bg_opacity"] = itheme_metadata.get("bg_opacity", "#7F77F125")
+                theme_data["menu_bg_opacity"] = itheme_metadata.get("menu_bg_opacity", "#7F77F114")
                 theme_data["tone_button_bk_color"] = itheme_metadata.get("toneButton_bk_color", "#7F77F166")
                 theme_data["tone_button_text_color"] = itheme_metadata.get("toneButton_text_color", "#6B63DD")
                 theme_data["tone_button_border_color"] = itheme_metadata.get("toneButton_border_color", "#6B63DD")

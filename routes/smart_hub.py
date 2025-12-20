@@ -162,6 +162,15 @@ async def get_current_smart_hub(
                 "prompt_bk": theme_config.prompt_bk,  # Prompt background color
                 "prompt_text_color": theme_config.prompt_text_color,  # Prompt text color
                 "ai_acknowledge_text_color": theme_config.ai_acknowledge_text_color,  # AI acknowledgment text color
+                # Danger colors
+                "danger_button_solid_color": theme_config.danger_button_solid_color or "#C62A2FFF",
+                "danger_button_hover": theme_config.danger_button_hover or "#C62A2F26",
+                "danger_tone_bk": theme_config.danger_tone_bk or "#C62A2F26",
+                "danger_tone_border": theme_config.danger_tone_border or "#C62A2F61",
+                "danger_tone_text": theme_config.danger_tone_text or "#C62A2FFF",
+                "danger_bk_light_color": theme_config.danger_bk_light_color or "#C62A2F26",
+                "danger_bk_solid_color": theme_config.danger_bk_solid_color or "#C62A2FFF",
+                "danger_bk_solid_text_color": theme_config.danger_bk_solid_text_color or "#ffffff",
                 # Add appearance theme metadata properties
                 "feedback_indicator_bk": appearance_metadata.get("feedback_indicator_bk", "#7F77F1")
             }

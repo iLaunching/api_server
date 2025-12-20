@@ -86,7 +86,7 @@ BEGIN
     
     -- Insert theme configurations with final hardcoded colors and button colors
     INSERT INTO theme_configs (option_value_id, name, text_color, background_color, menu_color, border_line_color, header_overlay_color, user_button_color, user_button_hover, user_button_icon, title_menu_color_light, border_line_color_light, global_button_hover) VALUES 
-        (sun_value_id, 'Sun', '#000000', '#FFFFFF', '#FFFFFF', '#b0b0b0', '#00000080', '#ffffff59', '#ffffff66', '#000000', '#d6d6d6', '#d6d6d659', '#d6d6d64d'),
+        (sun_value_id, 'Sun', '#000000', '#FFFFFF', '#FFFFFF', '#c0c0c0', '#00000080', '#ffffff59', '#ffffff66', '#000000', '#d6d6d6', '#d6d6d659', '#d6d6d64d'),
         (moon_value_id, 'Moon', '#d6d6d6', '#2F2F2F', '#464545', '#62676F', '#00000000', '#ffffff59', '#ffffff66', '#000000', '#62676F', '#62676F59', '#d6d6d64d'),
         (space_value_id, 'Space', '#ffffff', '#2A2E35', '#3A3F47', '#62676F', '#00000000', '#505663', '#505663cc', '#ffffff', '#62676F', '#62676F59', '#d6d6d64d'),
         (star_value_id, 'Star', '#ffffff', '#181B34', '#292F4C', '#616daa', '#00000000', '#181B34', '#181B34cc', '#ffffff', '#616daa', '#616daa59', '#d6d6d64d')

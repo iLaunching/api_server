@@ -849,6 +849,96 @@ async def clear_profile_icon(
         )
 
 
+@router.patch("/smart-hub/details")
+async def update_smart_hub_details(
+    smart_hub_id: str,
+    name: Optional[str] = None,
+    description: Optional[str] = None,
+    session: Dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Update smart hub name and/or description
+    """
+    try:
+        user_id = session.get("user_id")
+        
+        if not user_id:
+            logger.error("No user_id in session")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User ID not found in session"
+            )
+        
+        if name is None and description is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="At least one field (name or description) must be provided"
+            )
+        
+        logger.info("=== UPDATING SMART HUB DETAILS ===", 
+                   user_id=user_id,
+                   smart_hub_id=smart_hub_id,
+                   name=name,
+                   description=description)
+        
+        # Build dynamic update query
+        update_fields = []
+        params = {"smart_hub_id": smart_hub_id}
+        
+        if name is not None:
+            update_fields.append("name = :name")
+            params["name"] = name
+        
+        if description is not None:
+            update_fields.append("description = :description")
+            params["description"] = description
+        
+        update_query = text(f"""
+            UPDATE smart_hubs 
+            SET {', '.join(update_fields)}
+            WHERE id = :smart_hub_id
+        """)
+        
+        result = await db.execute(update_query, params)
+        
+        if result.rowcount == 0:
+            logger.error("No rows updated - smart hub not found", smart_hub_id=smart_hub_id)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Smart hub not found"
+            )
+        
+        await db.commit()
+        
+        logger.info("=== SMART HUB DETAILS UPDATED SUCCESSFULLY ===", 
+                   user_id=user_id,
+                   smart_hub_id=smart_hub_id)
+        
+        return {
+            "message": "Smart hub details updated successfully",
+            "smart_hub_id": smart_hub_id,
+            "updated_fields": {
+                "name": name,
+                "description": description
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error("=== FAILED TO UPDATE SMART HUB DETAILS ===", 
+                    user_id=session.get("user_id"),
+                    smart_hub_id=smart_hub_id,
+                    error=str(e),
+                    error_type=type(e).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update smart hub details: {str(e)}"
+        )
+
+
 @router.patch("/smart-hub/color")
 async def update_smart_hub_color(
     smart_hub_id: str,

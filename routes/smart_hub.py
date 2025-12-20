@@ -4,10 +4,11 @@ API endpoints for Smart Hub management and current user profile
 """
 
 from typing import Optional, Dict, Any
-from fastapi import APIRouter, HTTPException, Depends, status, UploadFile, File
+from fastapi import APIRouter, HTTPException, Depends, status, UploadFile, File, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 from sqlalchemy.orm import selectinload
+from pydantic import BaseModel
 import structlog
 import os
 import uuid
@@ -20,6 +21,15 @@ from models.user import UserProfile
 
 logger = structlog.get_logger()
 router = APIRouter()
+
+# ============================================
+# Request Models
+# ============================================
+
+class UpdateSmartHubDetailsRequest(BaseModel):
+    smart_hub_id: str
+    name: Optional[str] = None
+    description: Optional[str] = None
 
 # ============================================
 # Current User Profile & Smart Hub
@@ -851,9 +861,7 @@ async def clear_profile_icon(
 
 @router.patch("/smart-hub/details")
 async def update_smart_hub_details(
-    smart_hub_id: str,
-    name: Optional[str] = None,
-    description: Optional[str] = None,
+    request: UpdateSmartHubDetailsRequest,
     session: Dict = Depends(get_current_session),
     db: AsyncSession = Depends(get_db)
 ):
@@ -870,7 +878,7 @@ async def update_smart_hub_details(
                 detail="User ID not found in session"
             )
         
-        if name is None and description is None:
+        if request.name is None and request.description is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="At least one field (name or description) must be provided"
@@ -878,21 +886,21 @@ async def update_smart_hub_details(
         
         logger.info("=== UPDATING SMART HUB DETAILS ===", 
                    user_id=user_id,
-                   smart_hub_id=smart_hub_id,
-                   name=name,
-                   description=description)
+                   smart_hub_id=request.smart_hub_id,
+                   name=request.name,
+                   description=request.description)
         
         # Build dynamic update query
         update_fields = []
-        params = {"smart_hub_id": smart_hub_id}
+        params = {"smart_hub_id": request.smart_hub_id}
         
-        if name is not None:
+        if request.name is not None:
             update_fields.append("name = :name")
-            params["name"] = name
+            params["name"] = request.name
         
-        if description is not None:
+        if request.description is not None:
             update_fields.append("description = :description")
-            params["description"] = description
+            params["description"] = request.description
         
         update_query = text(f"""
             UPDATE smart_hubs 
@@ -903,7 +911,7 @@ async def update_smart_hub_details(
         result = await db.execute(update_query, params)
         
         if result.rowcount == 0:
-            logger.error("No rows updated - smart hub not found", smart_hub_id=smart_hub_id)
+            logger.error("No rows updated - smart hub not found", smart_hub_id=request.smart_hub_id)
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Smart hub not found"
@@ -913,14 +921,14 @@ async def update_smart_hub_details(
         
         logger.info("=== SMART HUB DETAILS UPDATED SUCCESSFULLY ===", 
                    user_id=user_id,
-                   smart_hub_id=smart_hub_id)
+                   smart_hub_id=request.smart_hub_id)
         
         return {
             "message": "Smart hub details updated successfully",
-            "smart_hub_id": smart_hub_id,
+            "smart_hub_id": request.smart_hub_id,
             "updated_fields": {
-                "name": name,
-                "description": description
+                "name": request.name,
+                "description": request.description
             }
         }
         

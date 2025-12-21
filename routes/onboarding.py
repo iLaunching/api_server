@@ -10,7 +10,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 import structlog
 
@@ -177,6 +177,22 @@ async def create_hub_step(
         )
         has_default_hub = existing_default_hub.scalar_one_or_none() is not None
         
+        # Get max order_number for user's existing hubs to assign next order
+        max_order_result = await db.execute(
+            select(func.max(SmartHub.order_number)).where(
+                SmartHub.owner_id == user_id,
+                SmartHub.is_active == True
+            )
+        )
+        max_order = max_order_result.scalar()
+        next_order = (max_order + 1) if max_order is not None else 0
+        
+        logger.info("Creating hub with order_number", 
+                   user_id=str(user_id),
+                   has_default_hub=has_default_hub,
+                   next_order=next_order,
+                   max_existing_order=max_order)
+        
         # Only set is_default=True if user doesn't have a default hub yet
         hub = await SmartHub.create(
             db=db,
@@ -186,7 +202,7 @@ async def create_hub_step(
             use_case_id=use_case_id,
             journey=journey,
             is_default=not has_default_hub,  # Only set default if no default exists
-            order_number=0,
+            order_number=next_order,
             settings={"onboarding_in_progress": True}
         )
         

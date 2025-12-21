@@ -1256,7 +1256,11 @@ async def delete_smart_hub(
                     detail="Failed to find replacement default hub"
                 )
             
-            # Set new default hub
+            # Clear default status from current hub first (to avoid unique constraint violation)
+            hub.is_default = False
+            await db.flush()  # Flush to database to release the unique constraint
+            
+            # Now set new default hub
             next_hub.is_default = True
             logger.info("Setting new default hub", 
                        new_default_hub_id=str(next_hub.id),

@@ -293,10 +293,13 @@ async def get_current_smart_hub(
                    has_hub=smart_hub_data is not None,
                    has_theme=theme_data is not None)
         
-        # Build smart hubs list with colors
+        # Build smart hubs list with colors, sorted by order_number
         smart_hubs_list = []
         if profile.smart_hubs:
-            for hub in profile.smart_hubs:
+            # Sort hubs by order_number (ascending) and created_at as fallback
+            sorted_hubs = sorted(profile.smart_hubs, key=lambda h: (h.order_number if h.order_number is not None else 999999, h.created_at))
+            
+            for hub in sorted_hubs:
                 hub_color_value = None
                 if hub.hub_color and hub.hub_color.theme_config:
                     try:
@@ -309,10 +312,11 @@ async def get_current_smart_hub(
                     "name": hub.name,
                     "hub_color_id": hub.hub_color_id,
                     "color": hub_color_value,
-                    "journey": hub.journey or "Validate Journey"
+                    "journey": hub.journey or "Validate Journey",
+                    "order_number": hub.order_number if hub.order_number is not None else 0
                 })
         
-        logger.info("Smart hubs loaded", count=len(smart_hubs_list))
+        logger.info("Smart hubs loaded and sorted", count=len(smart_hubs_list))
         
         return {
             "smart_hub": smart_hub_data,

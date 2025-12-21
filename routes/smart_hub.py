@@ -1226,6 +1226,12 @@ async def delete_smart_hub(
                 detail="Smart Hub not found or access denied"
             )
         
+        logger.info("Hub to delete found", 
+                   hub_id=hub_id,
+                   hub_name=hub.name,
+                   is_default=hub.is_default,
+                   order_number=hub.order_number)
+        
         # Get all user's hubs to check count and find replacement default
         all_hubs_query = select(SmartHub).where(
             SmartHub.owner_id == user_id,
@@ -1234,6 +1240,10 @@ async def delete_smart_hub(
         
         all_hubs_result = await db.execute(all_hubs_query)
         all_hubs = all_hubs_result.scalars().all()
+        
+        logger.info("User's hubs", 
+                   total_hubs=len(all_hubs),
+                   hub_list=[{"id": str(h.id), "name": h.name, "is_default": h.is_default, "order": h.order_number} for h in all_hubs])
         
         # Check if this is the last hub
         if len(all_hubs) <= 1:
@@ -1244,35 +1254,47 @@ async def delete_smart_hub(
         
         # If deleting the default hub, transfer default status to the next hub
         if hub.is_default:
-            logger.info("Deleting default hub, transferring default status", 
+            logger.info("FLOW: Deleting DEFAULT hub, transferring default status", 
                        hub_id=hub_id)
             
             # Find the next hub (first in list that's not the one being deleted)
             next_hub = next((h for h in all_hubs if str(h.id) != hub_id), None)
             
             if not next_hub:
+                logger.error("FLOW: Failed to find replacement hub")
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to find replacement default hub"
                 )
             
+            logger.info("FLOW: Found next hub", 
+                       next_hub_id=str(next_hub.id),
+                       next_hub_name=next_hub.name,
+                       next_hub_order=next_hub.order_number)
+            
             # Clear default status from current hub first (to avoid unique constraint violation)
+            logger.info("FLOW: Step 1 - Clearing is_default from hub being deleted")
             hub.is_default = False
             await db.flush()  # Flush to database to release the unique constraint
+            logger.info("FLOW: Step 1 - Complete")
             
             # Now set new default hub
+            logger.info("FLOW: Step 2 - Setting new default hub")
             next_hub.is_default = True
-            logger.info("Setting new default hub", 
+            await db.flush()
+            logger.info("FLOW: Step 2 - Complete. New default hub", 
                        new_default_hub_id=str(next_hub.id),
                        new_default_hub_name=next_hub.name)
             
             # Update user navigation to point to new default hub
+            logger.info("FLOW: Step 3 - Updating user navigation")
             # Get user profile
             profile_query = select(UserProfile).where(UserProfile.user_id == user_id)
             profile_result = await db.execute(profile_query)
             profile = profile_result.scalar_one_or_none()
             
             if profile:
+                logger.info("FLOW: Step 3 - Profile found", profile_id=str(profile.id))
                 # Get or create navigation
                 nav_query = select(UserNavigation).where(
                     UserNavigation.user_profile_id == profile.id
@@ -1281,20 +1303,32 @@ async def delete_smart_hub(
                 navigation = nav_result.scalar_one_or_none()
                 
                 if navigation:
+                    old_hub_id = str(navigation.current_smart_hub_id) if navigation.current_smart_hub_id else None
                     navigation.current_smart_hub_id = next_hub.id
-                    logger.info("Updated user navigation to new default hub",
+                    await db.flush()
+                    logger.info("FLOW: Step 3 - Complete. Updated user navigation",
                                navigation_id=str(navigation.id),
+                               old_current_hub_id=old_hub_id,
                                new_current_hub_id=str(next_hub.id))
+                else:
+                    logger.warning("FLOW: Step 3 - No navigation found for profile")
+            else:
+                logger.warning("FLOW: Step 3 - No profile found")
+        else:
+            logger.info("FLOW: Deleting NON-DEFAULT hub, no default transfer needed",
+                       hub_id=hub_id,
+                       hub_is_default=hub.is_default)
         
         # Delete the hub (matrix will cascade delete automatically)
+        logger.info("FLOW: Step 4 - Deleting hub from database")
         await db.delete(hub)
         await db.commit()
+        logger.info("FLOW: Step 4 - Complete")
         
         logger.info("Smart hub deleted successfully", 
                    user_id=user_id, 
                    hub_id=hub_id,
-                   hub_name=hub.name,
-                   was_default=hub.is_default)
+                   hub_name=hub.name)
         
         return {
             "message": "Smart Hub deleted successfully",

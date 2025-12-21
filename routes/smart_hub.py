@@ -1197,6 +1197,7 @@ async def delete_smart_hub(
 ):
     """
     Delete a Smart Hub and its associated Smart Matrix.
+    If deleting the default hub, transfers default status to the next hub by order_number.
     Will cascade delete the matrix due to CASCADE constraint.
     """
     try:
@@ -1225,26 +1226,61 @@ async def delete_smart_hub(
                 detail="Smart Hub not found or access denied"
             )
         
-        # Prevent deleting default hub
-        if hub.is_default:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot delete default Smart Hub"
-            )
-        
-        # Check if this is the last hub
-        count_query = select(SmartHub).where(
+        # Get all user's hubs to check count and find replacement default
+        all_hubs_query = select(SmartHub).where(
             SmartHub.owner_id == user_id,
             SmartHub.is_active == True
-        )
-        count_result = await db.execute(count_query)
-        hubs = count_result.scalars().all()
+        ).order_by(SmartHub.order_number.asc(), SmartHub.created_at.asc())
         
-        if len(hubs) <= 1:
+        all_hubs_result = await db.execute(all_hubs_query)
+        all_hubs = all_hubs_result.scalars().all()
+        
+        # Check if this is the last hub
+        if len(all_hubs) <= 1:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Cannot delete your only Smart Hub"
             )
+        
+        # If deleting the default hub, transfer default status to the next hub
+        if hub.is_default:
+            logger.info("Deleting default hub, transferring default status", 
+                       hub_id=hub_id)
+            
+            # Find the next hub (first in list that's not the one being deleted)
+            next_hub = next((h for h in all_hubs if str(h.id) != hub_id), None)
+            
+            if not next_hub:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to find replacement default hub"
+                )
+            
+            # Set new default hub
+            next_hub.is_default = True
+            logger.info("Setting new default hub", 
+                       new_default_hub_id=str(next_hub.id),
+                       new_default_hub_name=next_hub.name)
+            
+            # Update user navigation to point to new default hub
+            # Get user profile
+            profile_query = select(UserProfile).where(UserProfile.user_id == user_id)
+            profile_result = await db.execute(profile_query)
+            profile = profile_result.scalar_one_or_none()
+            
+            if profile:
+                # Get or create navigation
+                nav_query = select(UserNavigation).where(
+                    UserNavigation.user_profile_id == profile.id
+                )
+                nav_result = await db.execute(nav_query)
+                navigation = nav_result.scalar_one_or_none()
+                
+                if navigation:
+                    navigation.current_smart_hub_id = next_hub.id
+                    logger.info("Updated user navigation to new default hub",
+                               navigation_id=str(navigation.id),
+                               new_current_hub_id=str(next_hub.id))
         
         # Delete the hub (matrix will cascade delete automatically)
         await db.delete(hub)
@@ -1253,7 +1289,8 @@ async def delete_smart_hub(
         logger.info("Smart hub deleted successfully", 
                    user_id=user_id, 
                    hub_id=hub_id,
-                   hub_name=hub.name)
+                   hub_name=hub.name,
+                   was_default=hub.is_default)
         
         return {
             "message": "Smart Hub deleted successfully",

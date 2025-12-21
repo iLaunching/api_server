@@ -162,6 +162,15 @@ async def get_current_smart_hub(
                 "prompt_bk": theme_config.prompt_bk,  # Prompt background color
                 "prompt_text_color": theme_config.prompt_text_color,  # Prompt text color
                 "ai_acknowledge_text_color": theme_config.ai_acknowledge_text_color,  # AI acknowledgment text color
+                # Danger colors
+                "danger_button_solid_color": theme_config.danger_button_solid_color or "#C62A2FFF",
+                "danger_button_hover": theme_config.danger_button_hover or "#C62A2F26",
+                "danger_tone_bk": theme_config.danger_tone_bk or "#C62A2F26",
+                "danger_tone_border": theme_config.danger_tone_border or "#C62A2F61",
+                "danger_tone_text": theme_config.danger_tone_text or "#C62A2FFF",
+                "danger_bk_light_color": theme_config.danger_bk_light_color or "#C62A2F26",
+                "danger_bk_solid_color": theme_config.danger_bk_solid_color or "#C62A2FFF",
+                "danger_bk_solid_text_color": theme_config.danger_bk_solid_text_color or "#ffffff",
                 # Add appearance theme metadata properties
                 "feedback_indicator_bk": appearance_metadata.get("feedback_indicator_bk", "#7F77F1")
             }
@@ -1079,6 +1088,91 @@ async def clear_smart_hub_icon(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to clear smart hub icon: {str(e)}"
+        )
+
+
+@router.delete("/smart-hubs/{hub_id}")
+async def delete_smart_hub(
+    hub_id: str,
+    session: Dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Delete a Smart Hub and its associated Smart Matrix.
+    Will cascade delete the matrix due to CASCADE constraint.
+    """
+    try:
+        user_id = session.get("user_id")
+        
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User ID not found in session"
+            )
+        
+        logger.info("Deleting smart hub", user_id=user_id, hub_id=hub_id)
+        
+        # Verify hub exists and user owns it
+        hub_query = select(SmartHub).where(
+            SmartHub.id == hub_id,
+            SmartHub.owner_id == user_id
+        )
+        
+        hub_result = await db.execute(hub_query)
+        hub = hub_result.scalar_one_or_none()
+        
+        if not hub:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Smart Hub not found or access denied"
+            )
+        
+        # Prevent deleting default hub
+        if hub.is_default:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot delete default Smart Hub"
+            )
+        
+        # Check if this is the last hub
+        count_query = select(SmartHub).where(
+            SmartHub.owner_id == user_id,
+            SmartHub.is_active == True
+        )
+        count_result = await db.execute(count_query)
+        hubs = count_result.scalars().all()
+        
+        if len(hubs) <= 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot delete your only Smart Hub"
+            )
+        
+        # Delete the hub (matrix will cascade delete automatically)
+        await db.delete(hub)
+        await db.commit()
+        
+        logger.info("Smart hub deleted successfully", 
+                   user_id=user_id, 
+                   hub_id=hub_id,
+                   hub_name=hub.name)
+        
+        return {
+            "message": "Smart Hub deleted successfully",
+            "hub_id": hub_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error("Failed to delete smart hub", 
+                    user_id=session.get("user_id"), 
+                    hub_id=hub_id,
+                    error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete Smart Hub"
         )
 
 

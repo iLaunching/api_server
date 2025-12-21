@@ -283,10 +283,13 @@ async def get_current_smart_hub(
                    has_hub=smart_hub_data is not None,
                    has_theme=theme_data is not None)
         
-        # Build smart hubs list with colors
+        # Build smart hubs list with colors, sorted by order_number
         smart_hubs_list = []
         if profile.smart_hubs:
-            for hub in profile.smart_hubs:
+            # Sort hubs by order_number (ascending) and created_at as fallback
+            sorted_hubs = sorted(profile.smart_hubs, key=lambda h: (h.order_number if h.order_number is not None else 999999, h.created_at))
+            
+            for hub in sorted_hubs:
                 hub_color_value = None
                 if hub.hub_color and hub.hub_color.theme_config:
                     try:
@@ -299,10 +302,11 @@ async def get_current_smart_hub(
                     "name": hub.name,
                     "hub_color_id": hub.hub_color_id,
                     "color": hub_color_value,
-                    "journey": hub.journey or "Validate Journey"
+                    "journey": hub.journey or "Validate Journey",
+                    "order_number": hub.order_number if hub.order_number is not None else 0
                 })
         
-        logger.info("Smart hubs loaded", count=len(smart_hubs_list))
+        logger.info("Smart hubs loaded and sorted", count=len(smart_hubs_list))
         
         return {
             "smart_hub": smart_hub_data,
@@ -1099,6 +1103,7 @@ async def delete_smart_hub(
 ):
     """
     Delete a Smart Hub and its associated Smart Matrix.
+    If deleting the default hub, transfers default status to the next hub by order_number.
     Will cascade delete the matrix due to CASCADE constraint.
     """
     try:
@@ -1127,35 +1132,178 @@ async def delete_smart_hub(
                 detail="Smart Hub not found or access denied"
             )
         
-        # Prevent deleting default hub
-        if hub.is_default:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot delete default Smart Hub"
-            )
-        
-        # Check if this is the last hub
-        count_query = select(SmartHub).where(
+        # Get all user's hubs to check count and find replacement default
+        all_hubs_query = select(SmartHub).where(
             SmartHub.owner_id == user_id,
             SmartHub.is_active == True
-        )
-        count_result = await db.execute(count_query)
-        hubs = count_result.scalars().all()
+        ).order_by(SmartHub.order_number.asc(), SmartHub.created_at.asc())
         
-        if len(hubs) <= 1:
+        all_hubs_result = await db.execute(all_hubs_query)
+        all_hubs = all_hubs_result.scalars().all()
+        
+        # Check if this is the last hub
+        if len(all_hubs) <= 1:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Cannot delete your only Smart Hub"
             )
         
-        # Delete the hub (matrix will cascade delete automatically)
+        # Get user profile and navigation FIRST
+        logger.info("FLOW: Step 0 - Getting user profile and navigation")
+        profile_query = select(UserProfile).where(UserProfile.user_id == user_id)
+        profile_result = await db.execute(profile_query)
+        profile = profile_result.scalar_one_or_none()
+        
+        if not profile:
+            logger.error("FLOW: No profile found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User profile not found"
+            )
+        
+        logger.info("FLOW: Step 0 - Profile found", profile_id=str(profile.id))
+        
+        # Get navigation
+        nav_query = select(UserNavigation).where(
+            UserNavigation.user_profile_id == profile.id
+        )
+        nav_result = await db.execute(nav_query)
+        navigation = nav_result.scalar_one_or_none()
+        
+        if not navigation:
+            logger.error("FLOW: No navigation found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User navigation not found"
+            )
+        
+        current_hub_id_before = str(navigation.current_smart_hub_id) if navigation.current_smart_hub_id else None
+        logger.info("FLOW: Step 0 - Current hub in navigation", 
+                   current_hub_id=current_hub_id_before)
+        
+        # Find the default hub
+        default_hub = next((h for h in all_hubs if h.is_default), None)
+        if not default_hub:
+            logger.error("FLOW: No default hub found in user's hubs")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="No default hub found"
+            )
+        
+        logger.info("FLOW: Default hub found", 
+                   default_hub_id=str(default_hub.id),
+                   default_hub_name=default_hub.name)
+        
+        # STEP 1: If hub being deleted is the current hub, switch to default hub FIRST
+        if str(navigation.current_smart_hub_id) == hub_id:
+            logger.info("FLOW: Step 1 - Hub being deleted IS current hub, switching to default first")
+            
+            if str(default_hub.id) == hub_id:
+                # Deleting the default hub that's also current, need to find next hub
+                next_hub = next((h for h in all_hubs if str(h.id) != hub_id), None)
+                if not next_hub:
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail="Failed to find replacement hub"
+                    )
+                navigation.current_smart_hub_id = next_hub.id
+                logger.info("FLOW: Step 1 - Switched to next hub", next_hub_id=str(next_hub.id))
+            else:
+                # Switch to default hub
+                navigation.current_smart_hub_id = default_hub.id
+                logger.info("FLOW: Step 1 - Switched to default hub", default_hub_id=str(default_hub.id))
+            
+            await db.flush()
+            logger.info("FLOW: Step 1 - Complete. Current hub updated in navigation")
+        else:
+            logger.info("FLOW: Step 1 - Hub being deleted is NOT current hub, no switch needed",
+                       deleting_hub_id=hub_id,
+                       current_hub_id=str(navigation.current_smart_hub_id))
+        
+        # Verify navigation has a current hub before proceeding
+        if not navigation.current_smart_hub_id:
+            logger.error("FLOW: Navigation current_smart_hub_id is NULL after switching!")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to set current smart hub"
+            )
+        
+        logger.info("FLOW: Navigation verified", 
+                   current_hub_id=str(navigation.current_smart_hub_id))
+        
+        # STEP 2: If deleting the default hub, transfer default status to the next hub
+        if hub.is_default:
+            logger.info("FLOW: Step 2 - Deleting DEFAULT hub, transferring default status", 
+                       hub_id=hub_id)
+            
+            # Find the next hub (first in list that's not the one being deleted)
+            next_hub = next((h for h in all_hubs if str(h.id) != hub_id), None)
+            
+            if not next_hub:
+                logger.error("FLOW: Step 2 - Failed to find replacement hub")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to find replacement default hub"
+                )
+            
+            logger.info("FLOW: Step 2 - Found next hub", 
+                       next_hub_id=str(next_hub.id),
+                       next_hub_name=next_hub.name)
+            
+            # Clear default status from current hub first (to avoid unique constraint violation)
+            logger.info("FLOW: Step 2a - Clearing is_default from hub being deleted")
+            hub.is_default = False
+            await db.flush()  # Flush to database to release the unique constraint
+            logger.info("FLOW: Step 2a - Complete")
+            
+            # Now set new default hub
+            logger.info("FLOW: Step 2b - Setting new default hub")
+            next_hub.is_default = True
+            await db.flush()
+            logger.info("FLOW: Step 2 - Complete. New default hub", 
+                       new_default_hub_id=str(next_hub.id),
+                       new_default_hub_name=next_hub.name)
+        else:
+            logger.info("FLOW: Step 2 - Hub is NOT default, no default transfer needed",
+                       hub_id=hub_id)
+        
+        # STEP 3: Delete the hub (matrix will cascade delete automatically)
+        logger.info("FLOW: Step 3 - Deleting hub from database")
+        deleted_order = hub.order_number
         await db.delete(hub)
+        await db.flush()
+        logger.info("FLOW: Step 3 - Complete. Hub deleted", deleted_order_number=deleted_order)
+        
+        # STEP 4: Reorder remaining hubs to close gaps
+        logger.info("FLOW: Step 4 - Reordering remaining hubs")
+        
+        # Get all remaining active hubs for user, ordered by current order_number
+        remaining_hubs_query = select(SmartHub).where(
+            SmartHub.owner_id == user_id,
+            SmartHub.is_active == True
+        ).order_by(SmartHub.order_number.asc())
+        
+        remaining_hubs_result = await db.execute(remaining_hubs_query)
+        remaining_hubs = remaining_hubs_result.scalars().all()
+        
+        # Reassign order_numbers sequentially (0, 1, 2, 3...)
+        for idx, remaining_hub in enumerate(remaining_hubs):
+            if remaining_hub.order_number != idx:
+                logger.info("FLOW: Step 4 - Updating hub order",
+                           hub_id=str(remaining_hub.id),
+                           hub_name=remaining_hub.name,
+                           old_order=remaining_hub.order_number,
+                           new_order=idx)
+                remaining_hub.order_number = idx
+        
         await db.commit()
+        logger.info("FLOW: Step 4 - Complete. Reordered hubs", total_remaining=len(remaining_hubs))
         
         logger.info("Smart hub deleted successfully", 
                    user_id=user_id, 
                    hub_id=hub_id,
-                   hub_name=hub.name)
+                   hub_name=hub.name,
+                   was_default=hub.is_default)
         
         return {
             "message": "Smart Hub deleted successfully",

@@ -1374,9 +1374,35 @@ async def delete_smart_hub(
         
         # STEP 3: Delete the hub (matrix will cascade delete automatically)
         logger.info("FLOW: Step 3 - Deleting hub from database")
+        deleted_order = hub.order_number
         await db.delete(hub)
+        await db.flush()
+        logger.info("FLOW: Step 3 - Complete. Hub deleted", deleted_order_number=deleted_order)
+        
+        # STEP 4: Reorder remaining hubs to close gaps
+        logger.info("FLOW: Step 4 - Reordering remaining hubs")
+        
+        # Get all remaining active hubs for user, ordered by current order_number
+        remaining_hubs_query = select(SmartHub).where(
+            SmartHub.owner_id == user_id,
+            SmartHub.is_active == True
+        ).order_by(SmartHub.order_number.asc())
+        
+        remaining_hubs_result = await db.execute(remaining_hubs_query)
+        remaining_hubs = remaining_hubs_result.scalars().all()
+        
+        # Reassign order_numbers sequentially (0, 1, 2, 3...)
+        for idx, remaining_hub in enumerate(remaining_hubs):
+            if remaining_hub.order_number != idx:
+                logger.info("FLOW: Step 4 - Updating hub order",
+                           hub_id=str(remaining_hub.id),
+                           hub_name=remaining_hub.name,
+                           old_order=remaining_hub.order_number,
+                           new_order=idx)
+                remaining_hub.order_number = idx
+        
         await db.commit()
-        logger.info("FLOW: Step 3 - Complete")
+        logger.info("FLOW: Step 4 - Complete. Reordered hubs", total_remaining=len(remaining_hubs))
         
         logger.info("Smart hub deleted successfully", 
                    user_id=user_id, 

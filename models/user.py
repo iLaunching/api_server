@@ -135,6 +135,9 @@ class UserProfile(Base):
     # Avatar display option (24=default/initials, 25=image, 26=icon)
     avatar_display_option_value_id = Column(Integer, nullable=True, index=True, default=24)
     
+    # Login permissions (foreign key to option_values for 'login_permissions' option set)
+    login_permissions_option_value_id = Column(Integer, ForeignKey("option_values.id", ondelete="SET DEFAULT"), nullable=True, index=True, default=2916)
+    
     # Navigation (one-to-one with user_navigation table)
     user_navigation_id = Column(UUID(as_uuid=True), nullable=True, unique=True, index=True)
     
@@ -154,6 +157,7 @@ class UserProfile(Base):
     itheme = relationship("OptionValue", foreign_keys=[itheme_id])
     avatar_color = relationship("OptionValue", foreign_keys=[avatar_color_id])
     profile_icon = relationship("OptionValue", foreign_keys=[profile_icon_id])
+    login_permissions = relationship("OptionValue", foreign_keys=[login_permissions_option_value_id])
     
     # Smart Hubs - one-to-many relationship through user_id
     smart_hubs = relationship(

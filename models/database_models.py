@@ -360,6 +360,14 @@ class ThemeConfig(Base):
     prompt_bk = Column(String(9))  # Prompt background color (hex with optional alpha)
     prompt_text_color = Column(String(7))  # Prompt text color (hex)
     ai_acknowledge_text_color = Column(String(7))  # AI acknowledgment indicator text color (hex)
+    danger_button_solid_color = Column(String(9))  # Danger solid button color
+    danger_button_hover = Column(String(9))  # Danger button hover color
+    danger_tone_bk = Column(String(9))  # Danger tone background
+    danger_tone_border = Column(String(9))  # Danger tone border
+    danger_tone_text = Column(String(9))  # Danger tone text
+    danger_bk_light_color = Column(String(9))  # Danger light background
+    danger_bk_solid_color = Column(String(9))  # Danger solid background
+    danger_bk_solid_text_color = Column(String(7))  # Danger solid background text
     theme_metadata = Column(JSONB, default={})  # Additional theme properties (renamed from metadata)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     

@@ -4,10 +4,11 @@ API endpoints for Smart Hub management and current user profile
 """
 
 from typing import Optional, Dict, Any
-from fastapi import APIRouter, HTTPException, Depends, status, UploadFile, File
+from fastapi import APIRouter, HTTPException, Depends, status, UploadFile, File, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 from sqlalchemy.orm import selectinload
+from pydantic import BaseModel
 import structlog
 import os
 import uuid
@@ -20,6 +21,15 @@ from models.user import UserProfile
 
 logger = structlog.get_logger()
 router = APIRouter()
+
+# ============================================
+# Request Models
+# ============================================
+
+class UpdateSmartHubDetailsRequest(BaseModel):
+    smart_hub_id: str
+    name: Optional[str] = None
+    description: Optional[str] = None
 
 # ============================================
 # Current User Profile & Smart Hub
@@ -337,6 +347,7 @@ async def get_current_smart_hub(
                     "color": profile.avatar_color.theme_config.theme_metadata.get("color", "#4361EE") if profile.avatar_color.theme_config and profile.avatar_color.theme_config.theme_metadata else "#4361EE"
                 } if profile.avatar_color else None,
                 "avatar_display_option_value_id": profile.avatar_display_option_value_id,
+                "login_permissions_option_value_id": profile.login_permissions_option_value_id,
                 "profile_icon": {
                     "id": profile.profile_icon.id,
                     "value_name": profile.profile_icon.value_name,
@@ -652,6 +663,73 @@ async def update_appearance(
         )
 
 
+@router.patch("/profile/login-permissions")
+async def update_login_permissions(
+    permission_id: int,
+    session: Dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Update user's login permissions setting
+    """
+    try:
+        user_id = session.get("user_id")
+        
+        if not user_id:
+            logger.error("No user_id in session")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User ID not found in session"
+            )
+        
+        logger.info("=== UPDATING LOGIN PERMISSIONS ===", user_id=user_id, permission_id=permission_id)
+        
+        # Update the login_permissions_option_value_id using SQL
+        update_query = text("""
+            UPDATE user_profiles 
+            SET login_permissions_option_value_id = :permission_id 
+            WHERE user_id = :user_id
+        """)
+        
+        result = await db.execute(
+            update_query,
+            {"permission_id": permission_id, "user_id": user_id}
+        )
+        
+        logger.info("Update executed", rowcount=result.rowcount)
+        
+        if result.rowcount == 0:
+            logger.error("No rows updated - profile not found", user_id=user_id)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User profile not found"
+            )
+        
+        await db.commit()
+        
+        logger.info("=== LOGIN PERMISSIONS UPDATED SUCCESSFULLY ===", user_id=user_id, permission_id=permission_id)
+        
+        return {
+            "message": "Login permissions updated successfully",
+            "permission_id": permission_id,
+            "user_id": user_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error("=== FAILED TO UPDATE LOGIN PERMISSIONS ===", 
+                    user_id=session.get("user_id"), 
+                    permission_id=permission_id,
+                    error=str(e),
+                    error_type=type(e).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update login permissions: {str(e)}"
+        )
+
+
 @router.patch("/profile/itheme")
 async def update_user_itheme(
     itheme_id: int,
@@ -850,6 +928,94 @@ async def clear_profile_icon(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to clear profile icon: {str(e)}"
+        )
+
+
+@router.patch("/smart-hub/details")
+async def update_smart_hub_details(
+    request: UpdateSmartHubDetailsRequest,
+    session: Dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Update smart hub name and/or description
+    """
+    try:
+        user_id = session.get("user_id")
+        
+        if not user_id:
+            logger.error("No user_id in session")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User ID not found in session"
+            )
+        
+        if request.name is None and request.description is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="At least one field (name or description) must be provided"
+            )
+        
+        logger.info("=== UPDATING SMART HUB DETAILS ===", 
+                   user_id=user_id,
+                   smart_hub_id=request.smart_hub_id,
+                   name=request.name,
+                   description=request.description)
+        
+        # Build dynamic update query
+        update_fields = []
+        params = {"smart_hub_id": request.smart_hub_id}
+        
+        if request.name is not None:
+            update_fields.append("name = :name")
+            params["name"] = request.name
+        
+        if request.description is not None:
+            update_fields.append("description = :description")
+            params["description"] = request.description
+        
+        update_query = text(f"""
+            UPDATE smart_hubs 
+            SET {', '.join(update_fields)}
+            WHERE id = :smart_hub_id
+        """)
+        
+        result = await db.execute(update_query, params)
+        
+        if result.rowcount == 0:
+            logger.error("No rows updated - smart hub not found", smart_hub_id=request.smart_hub_id)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Smart hub not found"
+            )
+        
+        await db.commit()
+        
+        logger.info("=== SMART HUB DETAILS UPDATED SUCCESSFULLY ===", 
+                   user_id=user_id,
+                   smart_hub_id=request.smart_hub_id)
+        
+        return {
+            "message": "Smart hub details updated successfully",
+            "smart_hub_id": request.smart_hub_id,
+            "updated_fields": {
+                "name": request.name,
+                "description": request.description
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error("=== FAILED TO UPDATE SMART HUB DETAILS ===", 
+                    user_id=session.get("user_id"),
+                    smart_hub_id=smart_hub_id,
+                    error=str(e),
+                    error_type=type(e).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update smart hub details: {str(e)}"
         )
 
 
@@ -1132,6 +1298,12 @@ async def delete_smart_hub(
                 detail="Smart Hub not found or access denied"
             )
         
+        logger.info("Hub to delete found", 
+                   hub_id=hub_id,
+                   hub_name=hub.name,
+                   is_default=hub.is_default,
+                   order_number=hub.order_number)
+        
         # Get all user's hubs to check count and find replacement default
         all_hubs_query = select(SmartHub).where(
             SmartHub.owner_id == user_id,
@@ -1140,6 +1312,10 @@ async def delete_smart_hub(
         
         all_hubs_result = await db.execute(all_hubs_query)
         all_hubs = all_hubs_result.scalars().all()
+        
+        logger.info("User's hubs", 
+                   total_hubs=len(all_hubs),
+                   hub_list=[{"id": str(h.id), "name": h.name, "is_default": h.is_default, "order": h.order_number} for h in all_hubs])
         
         # Check if this is the last hub
         if len(all_hubs) <= 1:
@@ -1248,7 +1424,8 @@ async def delete_smart_hub(
             
             logger.info("FLOW: Step 2 - Found next hub", 
                        next_hub_id=str(next_hub.id),
-                       next_hub_name=next_hub.name)
+                       next_hub_name=next_hub.name,
+                       next_hub_order=next_hub.order_number)
             
             # Clear default status from current hub first (to avoid unique constraint violation)
             logger.info("FLOW: Step 2a - Clearing is_default from hub being deleted")
@@ -1302,8 +1479,7 @@ async def delete_smart_hub(
         logger.info("Smart hub deleted successfully", 
                    user_id=user_id, 
                    hub_id=hub_id,
-                   hub_name=hub.name,
-                   was_default=hub.is_default)
+                   hub_name=hub.name)
         
         return {
             "message": "Smart Hub deleted successfully",

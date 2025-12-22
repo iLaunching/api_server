@@ -347,6 +347,7 @@ async def get_current_smart_hub(
                     "color": profile.avatar_color.theme_config.theme_metadata.get("color", "#4361EE") if profile.avatar_color.theme_config and profile.avatar_color.theme_config.theme_metadata else "#4361EE"
                 } if profile.avatar_color else None,
                 "avatar_display_option_value_id": profile.avatar_display_option_value_id,
+                "login_permissions_option_value_id": profile.login_permissions_option_value_id,
                 "profile_icon": {
                     "id": profile.profile_icon.id,
                     "value_name": profile.profile_icon.value_name,

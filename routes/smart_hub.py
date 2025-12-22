@@ -662,6 +662,73 @@ async def update_appearance(
         )
 
 
+@router.patch("/profile/login-permissions")
+async def update_login_permissions(
+    permission_id: int,
+    session: Dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Update user's login permissions setting
+    """
+    try:
+        user_id = session.get("user_id")
+        
+        if not user_id:
+            logger.error("No user_id in session")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User ID not found in session"
+            )
+        
+        logger.info("=== UPDATING LOGIN PERMISSIONS ===", user_id=user_id, permission_id=permission_id)
+        
+        # Update the login_permissions_option_value_id using SQL
+        update_query = text("""
+            UPDATE user_profiles 
+            SET login_permissions_option_value_id = :permission_id 
+            WHERE user_id = :user_id
+        """)
+        
+        result = await db.execute(
+            update_query,
+            {"permission_id": permission_id, "user_id": user_id}
+        )
+        
+        logger.info("Update executed", rowcount=result.rowcount)
+        
+        if result.rowcount == 0:
+            logger.error("No rows updated - profile not found", user_id=user_id)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User profile not found"
+            )
+        
+        await db.commit()
+        
+        logger.info("=== LOGIN PERMISSIONS UPDATED SUCCESSFULLY ===", user_id=user_id, permission_id=permission_id)
+        
+        return {
+            "message": "Login permissions updated successfully",
+            "permission_id": permission_id,
+            "user_id": user_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error("=== FAILED TO UPDATE LOGIN PERMISSIONS ===", 
+                    user_id=session.get("user_id"), 
+                    permission_id=permission_id,
+                    error=str(e),
+                    error_type=type(e).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update login permissions: {str(e)}"
+        )
+
+
 @router.patch("/profile/itheme")
 async def update_user_itheme(
     itheme_id: int,

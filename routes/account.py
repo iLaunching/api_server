@@ -106,7 +106,7 @@ async def send_deletion_verification_email(email: str, code: str):
     """
     try:
         params = {
-            "from": "onboarding@resend.dev",
+            "from": "membership@resend.dev",
             "to": [email],
             "subject": "Account Deletion Verification Code",
             "html": f"""

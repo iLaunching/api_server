@@ -206,6 +206,126 @@ async def send_deletion_verification_email(email: str, code: str):
         raise
 
 
+async def send_deletion_confirmation_email(email: str, execution_date: datetime):
+    """
+    Send confirmation email after account deletion is queued
+    
+    Args:
+        email: User's email address
+        execution_date: When the account will be permanently deleted
+    """
+    try:
+        execution_date_str = execution_date.strftime("%B %d, %Y at %I:%M %p UTC")
+        
+        params = {
+            "from": "membership@resend.dev",
+            "to": [email],
+            "subject": "Account Deletion Scheduled",
+            "html": f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <style>
+                        body {{
+                            font-family: 'Arial', sans-serif;
+                            line-height: 1.6;
+                            color: #333;
+                            max-width: 600px;
+                            margin: 0 auto;
+                            padding: 20px;
+                        }}
+                        .header {{
+                            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+                            color: white;
+                            padding: 30px;
+                            text-align: center;
+                            border-radius: 10px 10px 0 0;
+                        }}
+                        .content {{
+                            background: #f9fafb;
+                            padding: 40px 30px;
+                            border-radius: 0 0 10px 10px;
+                        }}
+                        .info-box {{
+                            background: white;
+                            border: 2px solid #3b82f6;
+                            border-radius: 8px;
+                            padding: 20px;
+                            margin: 20px 0;
+                        }}
+                        .date {{
+                            font-size: 20px;
+                            font-weight: bold;
+                            color: #ef4444;
+                            text-align: center;
+                            margin: 10px 0;
+                        }}
+                        .warning {{
+                            background: #fef2f2;
+                            border-left: 4px solid #ef4444;
+                            padding: 15px;
+                            margin: 20px 0;
+                            border-radius: 4px;
+                        }}
+                        .footer {{
+                            text-align: center;
+                            margin-top: 30px;
+                            color: #6b7280;
+                            font-size: 14px;
+                        }}
+                    </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <h1 style="margin: 0;">✓ Account Deletion Scheduled</h1>
+                    </div>
+                    <div class="content">
+                        <p>Hello,</p>
+                        
+                        <p>Your iLaunching account has been successfully scheduled for deletion.</p>
+                        
+                        <div class="info-box">
+                            <p style="margin: 0; text-align: center;"><strong>Deletion Date:</strong></p>
+                            <div class="date">{execution_date_str}</div>
+                            <p style="margin: 10px 0 0 0; text-align: center; color: #6b7280;">30 days from now</p>
+                        </div>
+                        
+                        <div class="warning">
+                            <strong>⚠️ Important Information:</strong>
+                            <ul style="margin: 10px 0 0 0;">
+                                <li>Your access has been <strong>immediately revoked</strong></li>
+                                <li>You will not be able to log in to your account</li>
+                                <li>All data will be permanently deleted on the date above</li>
+                                <li>This action cannot be undone</li>
+                            </ul>
+                        </div>
+                        
+                        <p><strong>30-Day Grace Period:</strong></p>
+                        <p>Your account data will be retained for 30 days. If you change your mind and wish to restore your account, please contact our support team before the deletion date.</p>
+                        
+                        <p>If you did not request this deletion, please contact our support team immediately at support@ilaunching.io</p>
+                        
+                        <div class="footer">
+                            <p>© 2025 iLaunching. All rights reserved.</p>
+                            <p>This is an automated message, please do not reply.</p>
+                        </div>
+                    </div>
+                </body>
+                </html>
+            """
+        }
+        
+        # Use dedicated deletion API key
+        resend.api_key = RESEND_API_KEY_DELETION
+        response = resend.Emails.send(params)
+        logger.info("Deletion confirmation email sent", email=email, response=response)
+        
+    except Exception as e:
+        logger.error("Failed to send deletion confirmation email", email=email, error=str(e))
+        # Don't raise - deletion should proceed even if email fails
+        pass
+
+
 @router.post("/account/send-deletion-code")
 async def send_deletion_code(
     session: Dict = Depends(get_current_session),
@@ -360,6 +480,10 @@ async def delete_account(
         
         await db.commit()
         
+        # Send confirmation email
+        if user:
+            await send_deletion_confirmation_email(user.email, execution_date)
+        
         logger.info(
             "Account queued for deletion",
             user_id=user_id,
@@ -370,7 +494,8 @@ async def delete_account(
             "success": True,
             "message": "Account queued for deletion after 30-day grace period",
             "execution_date": execution_date.isoformat(),
-            "days_until_deletion": 30
+            "days_until_deletion": 30,
+            "should_logout": True  # Signal frontend to logout
         }
         
     except HTTPException:

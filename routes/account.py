@@ -17,6 +17,7 @@ import resend
 from auth.middleware import get_current_session
 from config.database import get_db
 from models.user import User
+from models.account_deletion import AccountDeletion
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -317,13 +318,48 @@ async def delete_account(
     try:
         user_id = session.get("user_id")
         
-        # TODO: Implement actual deletion logic
-        # For now, just log the request
-        logger.info("Account deletion requested", user_id=user_id)
+        # Check if there's already a pending deletion request
+        result = await db.execute(
+            select(AccountDeletion).where(
+                AccountDeletion.user_id == user_id,
+                AccountDeletion.status == "pending"
+            )
+        )
+        existing_deletion = result.scalar_one_or_none()
+        
+        if existing_deletion:
+            return {
+                "success": True,
+                "message": "Account already queued for deletion",
+                "execution_date": existing_deletion.execution_date.isoformat(),
+                "days_remaining": (existing_deletion.execution_date - datetime.utcnow()).days
+            }
+        
+        # Create new deletion request
+        request_date = datetime.utcnow()
+        execution_date = AccountDeletion.calculate_execution_date(request_date)
+        
+        deletion_request = AccountDeletion(
+            user_id=user_id,
+            request_date=request_date,
+            execution_date=execution_date,
+            status="pending"
+        )
+        
+        db.add(deletion_request)
+        await db.commit()
+        
+        logger.info(
+            "Account queued for deletion",
+            user_id=user_id,
+            execution_date=execution_date.isoformat()
+        )
         
         return {
             "success": True,
-            "message": "Account queued for deletion after 30-day grace period"
+            "message": "Account queued for deletion after 30-day grace period",
+            "execution_date": execution_date.isoformat(),
+            "days_until_deletion": 30
         }
         
     except HTTPException:

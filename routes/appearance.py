@@ -305,6 +305,26 @@ async def get_option_values_by_set(
                     error=str(e))
         raise HTTPException(status_code=500, detail="Failed to retrieve option values")
 
+@router.get("/avatar-colors")
+async def get_avatar_colors():
+    """Get all available avatar color options"""
+    try:
+        colors = option_sets_cache.get_options_by_set('avatar_color')
+        
+        # Sort by sort_order
+        colors_sorted = sorted(colors, key=lambda x: x.get('sort_order', 0))
+        
+        logger.info("Avatar colors retrieved", count=len(colors_sorted))
+        
+        return {
+            "colors": colors_sorted,
+            "count": len(colors_sorted)
+        }
+        
+    except Exception as e:
+        logger.error("Failed to get avatar colors", error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to retrieve avatar colors")
+
 @router.get("/smarthub-colors")
 async def get_smarthub_colors():
     """Get all available Smart Hub color scheme options"""

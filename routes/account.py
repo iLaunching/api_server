@@ -21,8 +21,8 @@ from models.user import User
 logger = structlog.get_logger()
 router = APIRouter()
 
-# Configure Resend API key
-resend.api_key = os.getenv("RESEND_API_KEY")
+# Configure Resend API key for account deletion (separate from signup)
+RESEND_API_KEY_DELETION = os.getenv("RESEND_API_KEY_DELETION", "re_YJgwxRoi_NhVT2tmK1k1cvwkh1vuAS6ok")
 
 # In-memory storage for deletion verification codes (use Redis in production)
 _deletion_verification_codes: Dict[str, Dict] = {}
@@ -195,6 +195,8 @@ async def send_deletion_verification_email(email: str, code: str):
             """
         }
         
+        # Use dedicated deletion API key
+        resend.api_key = RESEND_API_KEY_DELETION
         response = resend.Emails.send(params)
         logger.info("Deletion verification email sent", email=email, response=response)
         

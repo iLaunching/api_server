@@ -9,6 +9,8 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict
 from fastapi import HTTPException, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 import structlog
 
 logger = structlog.get_logger()
@@ -65,6 +67,25 @@ async def get_current_session(credentials: Optional[HTTPAuthorizationCredentials
             
             user_data = response.json()
             logger.info("Token validated successfully", user_id=user_data["user"]["id"])
+            
+            # Check if account is marked for deletion
+            from config.database import get_db
+            from models.user import User
+            
+            user_id = user_data["user"]["id"]
+            async for db in get_db():
+                result = await db.execute(
+                    select(User).where(User.id == user_id)
+                )
+                user = result.scalar_one_or_none()
+                
+                if user and user.is_deleted:
+                    logger.warning("Access blocked - account marked for deletion", user_id=user_id)
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Account is scheduled for deletion and access has been revoked",
+                    )
+                break
             
             # Return session data with user_id and token
             return {

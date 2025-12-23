@@ -347,6 +347,17 @@ async def delete_account(
         )
         
         db.add(deletion_request)
+        
+        # Update user record to block access immediately
+        result = await db.execute(
+            select(User).where(User.id == user_id)
+        )
+        user = result.scalar_one_or_none()
+        
+        if user:
+            user.is_deleted = True
+            user.deletion_scheduled_date = execution_date
+        
         await db.commit()
         
         logger.info(

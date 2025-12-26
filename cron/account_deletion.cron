@@ -1,0 +1,14 @@
+# Account Deletion Worker Cron Schedule
+# Runs daily at 3:00 AM UTC to process expired account deletions
+
+# Format: minute hour day month weekday command
+# 0 3 * * * = Every day at 3:00 AM
+
+# Run account deletion worker
+0 3 * * * cd /app && python workers/account_deletion_worker.py >> /var/log/account_deletion_worker.log 2>&1
+
+# Alternative: Run every 6 hours (4 times a day)
+# 0 */6 * * * cd /app && python workers/account_deletion_worker.py >> /var/log/account_deletion_worker.log 2>&1
+
+# Alternative: Run once a week (Sunday at 3 AM)
+# 0 3 * * 0 cd /app && python workers/account_deletion_worker.py >> /var/log/account_deletion_worker.log 2>&1

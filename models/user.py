@@ -26,6 +26,8 @@ class User(Base):
     role = Column(String(50), default="user")
     membership = Column(String(50), default="Individual")  # Individual or Enterprise
     email_verified = Column(Boolean, default=False)
+    is_deleted = Column(Boolean, default=False)  # Instant access control flag
+    deletion_scheduled_date = Column(DateTime(timezone=True), nullable=True)  # When final wipe will happen
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
     last_login = Column(DateTime(timezone=True))

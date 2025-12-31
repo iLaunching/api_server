@@ -181,6 +181,9 @@ async def get_current_smart_hub(
                 "danger_bk_light_color": theme_config.danger_bk_light_color or "#C62A2F26",
                 "danger_bk_solid_color": theme_config.danger_bk_solid_color or "#C62A2FFF",
                 "danger_bk_solid_text_color": theme_config.danger_bk_solid_text_color or "#ffffff",
+                # Grid colors for canvas
+                "line_grid_color": theme_config.line_grid_color or "#d6d6d6",
+                "dotted_grid_color": theme_config.dotted_grid_color or "#a0a0a0",
                 # Add appearance theme metadata properties
                 "feedback_indicator_bk": appearance_metadata.get("feedback_indicator_bk", "#7F77F1")
             }

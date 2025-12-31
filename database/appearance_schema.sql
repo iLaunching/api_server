@@ -45,6 +45,8 @@ CREATE TABLE IF NOT EXISTS theme_configs (
     danger_bk_light_color VARCHAR(9),
     danger_bk_solid_color VARCHAR(9),
     danger_bk_solid_text_color VARCHAR(7),
+    line_grid_color VARCHAR(7),
+    dotted_grid_color VARCHAR(7),
     theme_metadata JSONB DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -93,11 +95,11 @@ BEGIN
     SELECT id INTO star_value_id FROM option_values WHERE option_set_id = appearance_set_id AND value_name = 'star';
     
     -- Insert theme configurations with final hardcoded colors and button colors
-    INSERT INTO theme_configs (option_value_id, name, text_color, background_color, menu_color, border_line_color, header_overlay_color, user_button_color, user_button_hover, user_button_icon, title_menu_color_light, border_line_color_light, global_button_hover, danger_button_solid_color, danger_button_hover, danger_tone_bk, danger_tone_border, danger_tone_text, danger_bk_light_color, danger_bk_solid_color, danger_bk_solid_text_color) VALUES 
-        (sun_value_id, 'Sun', '#000000', '#FFFFFF', '#FFFFFF', '#d6d6d6', '#00000080', '#ffffff59', '#ffffff66', '#000000', '#d6d6d6', '#d6d6d659', '#d6d6d64d', '#C62A2FFF', '#C62A2F26', '#C62A2F26', '#C62A2F61', '#C62A2FFF', '#C62A2F26', '#C62A2FFF', '#ffffff'),
-        (moon_value_id, 'Moon', '#d6d6d6', '#2F2F2F', '#464545', '#62676F', '#00000000', '#ffffff59', '#ffffff66', '#000000', '#62676F', '#62676F59', '#d6d6d64d', '#C62A2FFF', '#C62A2F26', '#C62A2F26', '#C62A2F61', '#C62A2FFF', '#C62A2F26', '#C62A2FFF', '#ffffff'),
-        (space_value_id, 'Space', '#ffffff', '#2A2E35', '#3A3F47', '#62676F', '#00000000', '#505663', '#505663cc', '#ffffff', '#62676F', '#62676F59', '#d6d6d64d', '#C62A2FFF', '#C62A2F26', '#C62A2F26', '#C62A2F61', '#C62A2FFF', '#C62A2F26', '#C62A2FFF', '#ffffff'),
-        (star_value_id, 'Star', '#ffffff', '#181B34', '#292F4C', '#616daa', '#00000000', '#181B34', '#181B34cc', '#ffffff', '#616daa', '#616daa59', '#d6d6d64d', '#C62A2FFF', '#C62A2F26', '#C62A2F26', '#C62A2F61', '#C62A2FFF', '#C62A2F26', '#C62A2FFF', '#ffffff')
+    INSERT INTO theme_configs (option_value_id, name, text_color, background_color, menu_color, border_line_color, header_overlay_color, user_button_color, user_button_hover, user_button_icon, title_menu_color_light, border_line_color_light, global_button_hover, danger_button_solid_color, danger_button_hover, danger_tone_bk, danger_tone_border, danger_tone_text, danger_bk_light_color, danger_bk_solid_color, danger_bk_solid_text_color, line_grid_color, dotted_grid_color) VALUES 
+        (sun_value_id, 'Sun', '#000000', '#FFFFFF', '#FFFFFF', '#d6d6d6', '#00000080', '#ffffff59', '#ffffff66', '#000000', '#d6d6d6', '#d6d6d659', '#d6d6d64d', '#C62A2FFF', '#C62A2F26', '#C62A2F26', '#C62A2F61', '#C62A2FFF', '#C62A2F26', '#C62A2FFF', '#ffffff', '#d6d6d6', '#a0a0a0'),
+        (moon_value_id, 'Moon', '#d6d6d6', '#2F2F2F', '#464545', '#62676F', '#00000000', '#ffffff59', '#ffffff66', '#000000', '#62676F', '#62676F59', '#d6d6d64d', '#C62A2FFF', '#C62A2F26', '#C62A2F26', '#C62A2F61', '#C62A2FFF', '#C62A2F26', '#C62A2FFF', '#ffffff', '#62676F', '#62676F'),
+        (space_value_id, 'Space', '#ffffff', '#2A2E35', '#3A3F47', '#62676F', '#00000000', '#505663', '#505663cc', '#ffffff', '#62676F', '#62676F59', '#d6d6d64d', '#C62A2FFF', '#C62A2F26', '#C62A2F26', '#C62A2F61', '#C62A2FFF', '#C62A2F26', '#C62A2FFF', '#ffffff', '#62676F', '#62676F'),
+        (star_value_id, 'Star', '#ffffff', '#181B34', '#292F4C', '#616daa', '#00000000', '#181B34', '#181B34cc', '#ffffff', '#616daa', '#616daa59', '#d6d6d64d', '#C62A2FFF', '#C62A2F26', '#C62A2F26', '#C62A2F61', '#C62A2FFF', '#C62A2F26', '#C62A2FFF', '#ffffff', '#616daa', '#616daa')
     ON CONFLICT (option_value_id) DO NOTHING;
     
 END $$;

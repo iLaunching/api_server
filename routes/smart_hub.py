@@ -1196,12 +1196,16 @@ async def update_smart_hub_icon(
         )
 
 
+class UpdateGridSettingsRequest(BaseModel):
+    show_grid: Optional[bool] = None
+    grid_style: Optional[str] = None
+    snap_to_grid: Optional[bool] = None
+
+
 @router.patch("/smart-hubs/{smart_hub_id}/grid-settings")
 async def update_smart_hub_grid_settings(
     smart_hub_id: str,
-    show_grid: Optional[bool] = None,
-    grid_style: Optional[str] = None,
-    snap_to_grid: Optional[bool] = None,
+    request: UpdateGridSettingsRequest,
     session: Dict = Depends(get_current_session),
     db: AsyncSession = Depends(get_db)
 ):
@@ -1221,30 +1225,30 @@ async def update_smart_hub_grid_settings(
         logger.info("=== UPDATING SMART HUB GRID SETTINGS ===", 
                    user_id=user_id,
                    smart_hub_id=smart_hub_id,
-                   show_grid=show_grid,
-                   grid_style=grid_style,
-                   snap_to_grid=snap_to_grid)
+                   show_grid=request.show_grid,
+                   grid_style=request.grid_style,
+                   snap_to_grid=request.snap_to_grid)
         
         # Build update query dynamically based on provided parameters
         update_fields = []
         params = {"smart_hub_id": smart_hub_id}
         
-        if show_grid is not None:
+        if request.show_grid is not None:
             update_fields.append("show_grid = :show_grid")
-            params["show_grid"] = show_grid
+            params["show_grid"] = request.show_grid
         
-        if grid_style is not None:
-            if grid_style not in ['line', 'dotted']:
+        if request.grid_style is not None:
+            if request.grid_style not in ['line', 'dotted']:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="grid_style must be 'line' or 'dotted'"
                 )
             update_fields.append("grid_style = :grid_style")
-            params["grid_style"] = grid_style
+            params["grid_style"] = request.grid_style
         
-        if snap_to_grid is not None:
+        if request.snap_to_grid is not None:
             update_fields.append("snap_to_grid = :snap_to_grid")
-            params["snap_to_grid"] = snap_to_grid
+            params["snap_to_grid"] = request.snap_to_grid
         
         if not update_fields:
             raise HTTPException(
@@ -1278,9 +1282,9 @@ async def update_smart_hub_grid_settings(
         return {
             "message": "Smart hub grid settings updated successfully",
             "smart_hub_id": smart_hub_id,
-            "show_grid": show_grid,
-            "grid_style": grid_style,
-            "snap_to_grid": snap_to_grid
+            "show_grid": request.show_grid,
+            "grid_style": request.grid_style,
+            "snap_to_grid": request.snap_to_grid
         }
         
     except HTTPException:

@@ -120,7 +120,7 @@ async def complete_onboarding(
         
         logger.info("Smart matrix created", matrix_id=str(matrix.id), hub_id=str(hub.id))
         
-        # Step 3: Update UserNavigation to set current_smart_hub_id using relationships
+        # Step 3: Update UserNavigation to set current_smart_hub_id and current_smart_matrix_id using relationships
         # Load user with profile and navigation relationships
         result = await db.execute(
             select(User)
@@ -131,8 +131,9 @@ async def complete_onboarding(
         
         if user and user.profile and user.profile.navigation:
             user.profile.navigation.current_smart_hub_id = hub.id
+            user.profile.navigation.current_smart_matrix_id = matrix.id
             await db.commit()
-            logger.info("User navigation updated via relationships", user_id=str(user_id), hub_id=str(hub.id))
+            logger.info("User navigation updated via relationships", user_id=str(user_id), hub_id=str(hub.id), matrix_id=str(matrix.id))
         else:
             logger.warning("User, profile, or navigation not found", user_id=str(user_id))
         
@@ -270,6 +271,19 @@ async def create_matrix_step(
             "onboarding_date": datetime.utcnow().isoformat()
         })
         await db.commit()
+        
+        # Update UserNavigation to set current_smart_matrix_id
+        result = await db.execute(
+            select(User)
+            .options(selectinload(User.profile).selectinload(UserProfile.navigation))
+            .where(User.id == user_id)
+        )
+        user = result.scalar_one_or_none()
+        
+        if user and user.profile and user.profile.navigation:
+            user.profile.navigation.current_smart_matrix_id = matrix.id
+            await db.commit()
+            logger.info("User navigation updated with matrix", user_id=str(user_id), matrix_id=str(matrix.id))
         
         # Update user's onboarding status in auth-api
         await update_user_onboarding_status(user_id, session_data)

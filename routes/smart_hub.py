@@ -496,6 +496,14 @@ async def switch_smart_hub(
                 detail="User profile not found"
             )
         
+        # Get the smart matrix for this hub
+        matrix_query = select(SmartMatrix).where(
+            SmartMatrix.smart_hub_id == hub_id,
+            SmartMatrix.owner_id == user_id
+        ).order_by(SmartMatrix.order_number.asc(), SmartMatrix.created_at.asc())
+        matrix_result = await db.execute(matrix_query)
+        matrix = matrix_result.scalar_one_or_none()
+        
         # Get or create navigation
         nav_query = select(UserNavigation).where(
             UserNavigation.user_profile_id == profile.id
@@ -506,17 +514,20 @@ async def switch_smart_hub(
         if not navigation:
             navigation = UserNavigation(
                 user_profile_id=profile.id,
-                current_smart_hub_id=hub_id
+                current_smart_hub_id=hub_id,
+                current_smart_matrix_id=matrix.id if matrix else None
             )
             db.add(navigation)
         else:
             navigation.current_smart_hub_id = hub_id
+            navigation.current_smart_matrix_id = matrix.id if matrix else None
         
         await db.commit()
         
         logger.info("Smart hub switched successfully", 
                    user_id=user_id, 
-                   hub_id=hub_id)
+                   hub_id=hub_id,
+                   matrix_id=matrix.id if matrix else None)
         
         return {
             "message": "Smart Hub switched successfully",

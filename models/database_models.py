@@ -368,8 +368,8 @@ class ThemeConfig(Base):
     danger_bk_light_color = Column(String(9))  # Danger light background
     danger_bk_solid_color = Column(String(9))  # Danger solid background
     danger_bk_solid_text_color = Column(String(7))  # Danger solid background text
-    line_grid_color = Column(String(7))  # Grid line color for line grid style
-    dotted_grid_color = Column(String(7))  # Grid dot color for dotted grid style
+    line_grid_color = Column(String(7))  # Line grid color for canvas
+    dotted_grid_color = Column(String(7))  # Dotted grid color for canvas
     theme_metadata = Column(JSONB, default={})  # Additional theme properties (renamed from metadata)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     

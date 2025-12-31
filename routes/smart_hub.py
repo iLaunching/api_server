@@ -275,6 +275,9 @@ async def get_current_smart_hub(
                     "icon_prefix": hub_icon_metadata.get("icon_prefix") if hub_icon_metadata else None
                 } if hub.smartHub_icon and hub_icon_metadata else None,
                 "journey": hub.journey or "Validate Journey",  # Per-hub journey tier
+                "show_grid": hub.show_grid,
+                "grid_style": hub.grid_style,
+                "snap_to_grid": hub.snap_to_grid,
                 "owner_id": str(hub.owner_id),
                 "is_default": hub.is_default,
                 "created_at": hub.created_at.isoformat() if hub.created_at else None,
@@ -286,7 +289,10 @@ async def get_current_smart_hub(
             logger.info("Smart hub loaded from navigation", 
                        hub_id=str(hub.id),
                        hub_name=hub.name,
-                       hub_color=hub_color)
+                       hub_color=hub_color,
+                       show_grid=hub.show_grid,
+                       grid_style=hub.grid_style,
+                       snap_to_grid=hub.snap_to_grid)
         
         logger.info("Current smart hub retrieved successfully", 
                    user_id=user_id,

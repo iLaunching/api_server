@@ -411,6 +411,11 @@ class SmartHub(Base):
     order_number = Column(Integer, default=0)  # Display order for user's hubs
     journey = Column(String(50), default="Validate Journey")  # Per-hub journey tier
     
+    # Canvas grid settings
+    show_grid = Column(Boolean, default=False, nullable=False)  # Display grid in SmartMatrix canvas
+    grid_style = Column(String(10), default='line', nullable=False)  # Grid style: 'line' or 'dotted'
+    snap_to_grid = Column(Boolean, default=False, nullable=False)  # Enable grid snapping for nodes
+    
     # Hub status
     is_active = Column(Boolean, default=True, index=True)
     is_default = Column(Boolean, default=False)  # First hub is default
@@ -444,6 +449,9 @@ class SmartHub(Base):
             "avatar_display_option_value_id": self.avatar_display_option_value_id,
             "use_case_id": self.use_case_id,
             "order_number": self.order_number,
+            "show_grid": self.show_grid,
+            "grid_style": self.grid_style,
+            "snap_to_grid": self.snap_to_grid,
             "is_active": self.is_active,
             "is_default": self.is_default,
             "settings": self.settings,

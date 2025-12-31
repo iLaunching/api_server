@@ -368,8 +368,8 @@ class ThemeConfig(Base):
     danger_bk_light_color = Column(String(9))  # Danger light background
     danger_bk_solid_color = Column(String(9))  # Danger solid background
     danger_bk_solid_text_color = Column(String(7))  # Danger solid background text
-    line_grid_color = Column(String(7))  # Grid line color for line grid style
-    dotted_grid_color = Column(String(7))  # Grid dot color for dotted grid style
+    line_grid_color = Column(String(7))  # Line grid color for canvas
+    dotted_grid_color = Column(String(7))  # Dotted grid color for canvas
     theme_metadata = Column(JSONB, default={})  # Additional theme properties (renamed from metadata)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     
@@ -562,15 +562,19 @@ class UserNavigation(Base):
     # One-to-one with current smart hub
     current_smart_hub_id = Column(UUID(as_uuid=True), ForeignKey("smart_hubs.id", ondelete="SET NULL"), nullable=True, unique=True, index=True)
     
+    # One-to-one with current smart matrix
+    current_smart_matrix_id = Column(UUID(as_uuid=True), ForeignKey("smart_matrices.id", ondelete="SET NULL"), nullable=True, unique=True, index=True)
+    
     # Timestamps
     created_at = Column(DateTime(timezone=True), default=func.now())
     updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
     
     # Relationships
     current_smart_hub = relationship("SmartHub", foreign_keys=[current_smart_hub_id])
+    current_smart_matrix = relationship("SmartMatrix", foreign_keys=[current_smart_matrix_id])
     
     def __repr__(self):
-        return f"<UserNavigation(id={self.id}, user_profile_id={self.user_profile_id}, current_smart_hub_id={self.current_smart_hub_id})>"
+        return f"<UserNavigation(id={self.id}, user_profile_id={self.user_profile_id}, current_smart_hub_id={self.current_smart_hub_id}, current_smart_matrix_id={self.current_smart_matrix_id})>"
     
     def to_dict(self):
         """Convert user navigation to dictionary"""
@@ -578,6 +582,7 @@ class UserNavigation(Base):
             "id": str(self.id),
             "user_profile_id": str(self.user_profile_id),
             "current_smart_hub_id": str(self.current_smart_hub_id) if self.current_smart_hub_id else None,
+            "current_smart_matrix_id": str(self.current_smart_matrix_id) if self.current_smart_matrix_id else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

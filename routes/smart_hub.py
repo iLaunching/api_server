@@ -16,7 +16,7 @@ from pathlib import Path
 
 from config.database import get_db
 from auth.middleware import get_current_session
-from models.database_models import UserNavigation, SmartHub, OptionValue, ThemeConfig
+from models.database_models import UserNavigation, SmartHub, SmartMatrix, OptionValue, ThemeConfig
 from models.user import UserProfile
 
 logger = structlog.get_logger()
@@ -379,6 +379,165 @@ async def get_current_smart_hub(
         )
 
 
+@router.get("/users/me/current-smart-matrix")
+async def get_current_smart_matrix(
+    session: Dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get current user's active Smart Matrix with theme data via relations.
+    Pure relational traversal for maximum performance.
+    
+    Relationship Flow:
+    1. user_id (from JWT) → UserProfile (user_id FK)
+    2. UserProfile → UserNavigation (user_profile_id FK)
+    3. UserNavigation → current_smart_matrix (current_smart_matrix_id FK)
+    4. UserProfile → appearance → ThemeConfig (appearance_id FK)
+    """
+    try:
+        user_id = session.get("user_id")
+        
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User ID not found in session"
+            )
+        
+        logger.info("Fetching current smart matrix via relationship chain", user_id=user_id)
+        
+        # Get UserProfile with related data via eager loading
+        profile_query = (
+            select(UserProfile)
+            .options(
+                # Load user for first_name and last_name
+                selectinload(UserProfile.user),
+                
+                # Load appearance with theme config
+                selectinload(UserProfile.appearance)
+                .selectinload(OptionValue.theme_config),
+                
+                # Load itheme with theme config
+                selectinload(UserProfile.itheme)
+                .selectinload(OptionValue.theme_config),
+                
+                # Load navigation with current smart matrix
+                selectinload(UserProfile.navigation)
+                .selectinload(UserNavigation.current_smart_matrix),
+                
+                # Load navigation with current smart hub
+                selectinload(UserProfile.navigation)
+                .selectinload(UserNavigation.current_smart_hub)
+            )
+            .where(UserProfile.user_id == user_id)
+        )
+        
+        result = await db.execute(profile_query)
+        profile = result.scalar_one_or_none()
+        
+        if not profile:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User profile not found"
+            )
+        
+        logger.info("User profile loaded", 
+                   profile_id=str(profile.id),
+                   has_navigation=profile.navigation is not None)
+        
+        # Check if navigation exists
+        navigation = profile.navigation
+        if not navigation:
+            logger.info("Creating user navigation", user_profile_id=str(profile.id))
+            navigation = UserNavigation(user_profile_id=profile.id)
+            db.add(navigation)
+            await db.commit()
+            await db.refresh(navigation, ['current_smart_matrix', 'current_smart_hub'])
+            logger.info("User navigation created", navigation_id=str(navigation.id))
+        
+        # Build theme data from appearance + itheme relations
+        theme_data = None
+        if profile.appearance and profile.appearance.theme_config:
+            theme_config = profile.appearance.theme_config
+            appearance_metadata = theme_config.theme_metadata or {}
+            
+            theme_data = {
+                "header_overlay": theme_config.header_overlay_color,
+                "background": theme_config.background_color,
+                "text": theme_config.text_color,
+                "appearance_text_color": theme_config.text_color,
+                "menu": theme_config.menu_color,
+                "border": theme_config.border_line_color,
+                "line_grid_color": theme_config.line_grid_color or "#d6d6d6",
+                "dotted_grid_color": theme_config.dotted_grid_color or "#a0a0a0",
+            }
+            
+            # Add itheme solid_color
+            if profile.itheme and profile.itheme.theme_config:
+                itheme_metadata = profile.itheme.theme_config.theme_metadata or {}
+                solid_color_value = itheme_metadata.get("solid_color", "#7F77F1")
+                theme_data["header_background"] = solid_color_value
+                theme_data["solid_color"] = solid_color_value
+        
+        # Build smart matrix data from navigation relation
+        smart_matrix_data = None
+        if navigation.current_smart_matrix:
+            matrix = navigation.current_smart_matrix
+            
+            smart_matrix_data = {
+                "id": str(matrix.id),
+                "name": matrix.name,
+                "smart_hub_id": str(matrix.smart_hub_id),
+                "owner_id": str(matrix.owner_id),
+                "color": matrix.color,
+                "order_number": matrix.order_number,
+                "created_at": matrix.created_at.isoformat() if matrix.created_at else None,
+                "modified_at": matrix.modified_at.isoformat() if matrix.modified_at else None,
+            }
+            logger.info("Smart matrix loaded from navigation", 
+                       matrix_id=str(matrix.id),
+                       matrix_name=matrix.name)
+        
+        # Also get smart hub data if available
+        smart_hub_data = None
+        if navigation.current_smart_hub:
+            hub = navigation.current_smart_hub
+            smart_hub_data = {
+                "id": str(hub.id),
+                "name": hub.name,
+                "show_grid": hub.show_grid,
+                "grid_style": hub.grid_style,
+                "snap_to_grid": hub.snap_to_grid,
+            }
+        
+        logger.info("Current smart matrix retrieved successfully", 
+                   user_id=user_id,
+                   has_matrix=smart_matrix_data is not None,
+                   has_theme=theme_data is not None)
+        
+        return {
+            "smart_matrix": smart_matrix_data,
+            "smart_hub": smart_hub_data,
+            "theme": theme_data,
+            "profile": {
+                "id": str(profile.id),
+                "user_id": str(profile.user_id),
+                "first_name": profile.user.first_name if profile.user else "",
+                "surname": profile.user.last_name if profile.user else "",
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to get current smart matrix", 
+                    user_id=session.get("user_id"), 
+                    error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve current Smart Matrix"
+        )
+
+
 @router.get("/users/me/profile")
 async def get_current_user_profile(
     session: Dict = Depends(get_current_session),
@@ -496,6 +655,14 @@ async def switch_smart_hub(
                 detail="User profile not found"
             )
         
+        # Get the smart matrix for this hub
+        matrix_query = select(SmartMatrix).where(
+            SmartMatrix.smart_hub_id == hub_id,
+            SmartMatrix.owner_id == user_id
+        ).order_by(SmartMatrix.order_number.asc(), SmartMatrix.created_at.asc())
+        matrix_result = await db.execute(matrix_query)
+        matrix = matrix_result.scalar_one_or_none()
+        
         # Get or create navigation
         nav_query = select(UserNavigation).where(
             UserNavigation.user_profile_id == profile.id
@@ -506,17 +673,20 @@ async def switch_smart_hub(
         if not navigation:
             navigation = UserNavigation(
                 user_profile_id=profile.id,
-                current_smart_hub_id=hub_id
+                current_smart_hub_id=hub_id,
+                current_smart_matrix_id=matrix.id if matrix else None
             )
             db.add(navigation)
         else:
             navigation.current_smart_hub_id = hub_id
+            navigation.current_smart_matrix_id = matrix.id if matrix else None
         
         await db.commit()
         
         logger.info("Smart hub switched successfully", 
                    user_id=user_id, 
-                   hub_id=hub_id)
+                   hub_id=hub_id,
+                   matrix_id=matrix.id if matrix else None)
         
         return {
             "message": "Smart Hub switched successfully",

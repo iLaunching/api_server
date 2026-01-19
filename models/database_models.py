@@ -518,10 +518,9 @@ class SmartMatrix(Base):
     # Relationships
     smart_hub = relationship("SmartHub", back_populates="smart_matrix")
     manifest = relationship(
-        "Manifest", 
-        foreign_keys="[SmartMatrix.manifest_id]",
-        remote_side="[Manifest.smart_matrix_id]",  # The remote FK that points back to us
-        back_populates="smart_matrix", 
+        "Manifest",
+        primaryjoin="SmartMatrix.manifest_id == foreign(Manifest.manifest_id)",
+        back_populates="smart_matrix",
         uselist=False
     )
     

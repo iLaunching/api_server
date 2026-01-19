@@ -502,12 +502,22 @@ class SmartMatrix(Base):
     color = Column(Text)  # Color theme for this matrix
     order_number = Column(Integer, default=0)  # Display order within hub
     
+    # Direct reference to manifest (for fast access)
+    manifest_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("tbl_manifest.manifest_id", ondelete="SET NULL"),
+        nullable=True,
+        unique=True,  # One-to-one relationship
+        index=True
+    )
+    
     # Timestamps
     created_at = Column(DateTime(timezone=True), default=func.now(), index=True)
     modified_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
     
     # Relationships
     smart_hub = relationship("SmartHub", back_populates="smart_matrix")
+    manifest = relationship("Manifest", foreign_keys=[manifest_id], back_populates="smart_matrix", uselist=False)
     
     def __repr__(self):
         return f"<SmartMatrix(id={self.id}, name={self.name}, smart_hub_id={self.smart_hub_id})>"
@@ -521,6 +531,7 @@ class SmartMatrix(Base):
             "name": self.name,
             "color": self.color,
             "order_number": self.order_number,
+            "manifest_id": str(self.manifest_id) if self.manifest_id else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "modified_at": self.modified_at.isoformat() if self.modified_at else None,
         }

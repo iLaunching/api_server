@@ -57,7 +57,12 @@ class Manifest(Base):
     updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
     
     # Relationships
-    smart_matrix = relationship("SmartMatrix", back_populates="manifest")
+    # Bidirectional one-to-one for fast access: SmartMatrix ↔ Manifest
+    smart_matrix = relationship(
+        "SmartMatrix", 
+        foreign_keys="[Manifest.smart_matrix_id]",
+        back_populates="manifest"
+    )
     
     def __repr__(self):
         return f"<Manifest(manifest_id={self.manifest_id}, smart_matrix_id={self.smart_matrix_id}, position=({self.current_x}, {self.current_y}), zoom={self.zoom_level})>"

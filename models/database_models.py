@@ -520,6 +520,7 @@ class SmartMatrix(Base):
     manifest = relationship(
         "Manifest", 
         foreign_keys="[SmartMatrix.manifest_id]",
+        remote_side="[Manifest.smart_matrix_id]",  # The remote FK that points back to us
         back_populates="smart_matrix", 
         uselist=False
     )

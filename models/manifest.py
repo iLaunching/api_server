@@ -61,7 +61,6 @@ class Manifest(Base):
     smart_matrix = relationship(
         "SmartMatrix", 
         foreign_keys="[Manifest.smart_matrix_id]",
-        remote_side="[SmartMatrix.id]",  # This side is the "one" (parent)
         back_populates="manifest"
     )
     

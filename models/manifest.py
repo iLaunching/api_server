@@ -59,8 +59,8 @@ class Manifest(Base):
     # Relationships
     # Bidirectional one-to-one for fast access: SmartMatrix ↔ Manifest
     smart_matrix = relationship(
-        "SmartMatrix", 
-        foreign_keys="[Manifest.smart_matrix_id]",
+        "SmartMatrix",
+        primaryjoin="Manifest.smart_matrix_id == foreign(SmartMatrix.id)",
         back_populates="manifest"
     )
     

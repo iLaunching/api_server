@@ -11,7 +11,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import relationship, selectinload
+from sqlalchemy.orm import relationship, selectinload, foreign, remote
 from sqlalchemy.future import select
 from config.database import Base
 import structlog
@@ -519,7 +519,7 @@ class SmartMatrix(Base):
     smart_hub = relationship("SmartHub", back_populates="smart_matrix")
     manifest = relationship(
         "Manifest",
-        primaryjoin="SmartMatrix.manifest_id == foreign(Manifest.manifest_id)",
+        primaryjoin="foreign(SmartMatrix.manifest_id) == remote(Manifest.manifest_id)",
         back_populates="smart_matrix",
         uselist=False
     )

@@ -9,7 +9,7 @@ from typing import Optional, Dict, Any
 from sqlalchemy import Column, String, Float, DateTime, Boolean, ForeignKey, func
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, foreign, remote
 from sqlalchemy.future import select
 from config.database import Base
 import structlog
@@ -60,7 +60,7 @@ class Manifest(Base):
     # Bidirectional one-to-one for fast access: SmartMatrix ↔ Manifest
     smart_matrix = relationship(
         "SmartMatrix",
-        primaryjoin="Manifest.smart_matrix_id == foreign(SmartMatrix.id)",
+        primaryjoin="foreign(Manifest.smart_matrix_id) == remote(SmartMatrix.id)",
         back_populates="manifest"
     )
     

@@ -517,7 +517,12 @@ class SmartMatrix(Base):
     
     # Relationships
     smart_hub = relationship("SmartHub", back_populates="smart_matrix")
-    manifest = relationship("Manifest", foreign_keys=[manifest_id], back_populates="smart_matrix", uselist=False)
+    manifest = relationship(
+        "Manifest", 
+        foreign_keys="[SmartMatrix.manifest_id]",
+        back_populates="smart_matrix", 
+        uselist=False
+    )
     
     def __repr__(self):
         return f"<SmartMatrix(id={self.id}, name={self.name}, smart_hub_id={self.smart_hub_id})>"

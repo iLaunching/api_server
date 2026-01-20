@@ -61,7 +61,8 @@ class Manifest(Base):
     smart_matrix = relationship(
         "SmartMatrix",
         primaryjoin="foreign(Manifest.smart_matrix_id) == remote(SmartMatrix.id)",
-        back_populates="manifest"
+        back_populates="manifest",
+        uselist=False  # One-to-one relationship
     )
     
     def __repr__(self):

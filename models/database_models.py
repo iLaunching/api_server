@@ -520,8 +520,7 @@ class SmartMatrix(Base):
     manifest = relationship(
         "Manifest",
         primaryjoin="foreign(SmartMatrix.manifest_id) == remote(Manifest.manifest_id)",
-        back_populates="smart_matrix",
-        uselist=False
+        uselist=False  # One-to-one
     )
     
     def __repr__(self):

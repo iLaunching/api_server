@@ -57,12 +57,12 @@ class Manifest(Base):
     updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
     
     # Relationships
-    # Bidirectional one-to-one for fast access: SmartMatrix ↔ Manifest
+    # Unidirectional: Manifest → SmartMatrix (SmartMatrix has the reverse direction)
     smart_matrix = relationship(
         "SmartMatrix",
         primaryjoin="foreign(Manifest.smart_matrix_id) == remote(SmartMatrix.id)",
-        back_populates="manifest",
-        uselist=False  # One-to-one relationship
+        uselist=False,
+        viewonly=True  # Read-only, doesn't participate in bidirectional sync
     )
     
     def __repr__(self):

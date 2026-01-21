@@ -16,6 +16,7 @@ import structlog
 
 from config.database import get_db
 from models.database_models import SmartHub, SmartMatrix, UserNavigation
+from models.manifest import Manifest
 from models.user import User, UserProfile
 from auth.middleware import get_current_session
 
@@ -119,6 +120,26 @@ async def complete_onboarding(
         )
         
         logger.info("Smart matrix created", matrix_id=str(matrix.id), hub_id=str(hub.id))
+        
+        # Step 2.5: Create Manifest for the Smart Matrix (Tier A - Neural System)
+        manifest = await Manifest.create(
+            db=db,
+            smart_matrix_id=matrix.id,
+            user_id=user_id,
+            business_dna={
+                "intent": "New business journey",
+                "created_via": "onboarding",
+                "hub_name": request.hub_name,
+                "matrix_name": request.matrix_name
+            }
+        )
+        
+        # Update bidirectional relationship
+        matrix.manifest_id = manifest.manifest_id
+        await db.commit()
+        await db.refresh(matrix)
+        
+        logger.info("Manifest created for matrix", manifest_id=str(manifest.manifest_id), matrix_id=str(matrix.id))
         
         # Step 3: Update UserNavigation to set current_smart_hub_id and current_smart_matrix_id using relationships
         # Load user with profile and navigation relationships
@@ -263,6 +284,28 @@ async def create_matrix_step(
             name=matrix_name,
             order_number=0
         )
+        
+        logger.info("Smart matrix created", matrix_id=str(matrix.id), hub_id=str(hub_uuid))
+        
+        # Create Manifest for the Smart Matrix (Tier A - Neural System)
+        manifest = await Manifest.create(
+            db=db,
+            smart_matrix_id=matrix.id,
+            user_id=user_id,
+            business_dna={
+                "intent": "New business journey",
+                "created_via": "onboarding",
+                "matrix_name": matrix_name,
+                "marketing_source_id": marketing_option_id
+            }
+        )
+        
+        # Update bidirectional relationship
+        matrix.manifest_id = manifest.manifest_id
+        await db.commit()
+        await db.refresh(matrix)
+        
+        logger.info("Manifest created for matrix", manifest_id=str(manifest.manifest_id), matrix_id=str(matrix.id))
         
         # Update hub settings
         hub.settings.update({

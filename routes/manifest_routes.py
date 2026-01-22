@@ -16,7 +16,7 @@ from models.database_models import SmartMatrix
 
 logger = structlog.get_logger()
 
-router = APIRouter(prefix="/api/manifest", tags=["manifest"])
+router = APIRouter(prefix="/api/v1/manifest", tags=["manifest"])
 
 
 # ============================================================================

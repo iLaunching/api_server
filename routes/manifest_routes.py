@@ -13,10 +13,12 @@ import structlog
 from config.database import get_db
 from models.manifest import Manifest
 from models.database_models import SmartMatrix
+from auth.middleware import get_current_session
+from typing import Dict
 
 logger = structlog.get_logger()
 
-router = APIRouter(prefix="/api/manifest", tags=["manifest"])
+router = APIRouter(prefix="/api/v1/manifest", tags=["manifest"])
 
 
 # ============================================================================
@@ -151,7 +153,8 @@ async def get_manifest(
 @router.get("/smart-matrix/{smart_matrix_id}", response_model=ManifestResponse)
 async def get_manifest_by_smart_matrix(
     smart_matrix_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    session: Dict = Depends(get_current_session)
 ):
     """
     Get manifest by Smart Matrix ID (one-to-one relationship).
@@ -174,7 +177,8 @@ async def get_manifest_by_smart_matrix(
 async def update_manifest_position(
     manifest_id: uuid.UUID,
     position_data: ManifestUpdate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    session: Dict = Depends(get_current_session)
 ):
     """
     Update manifest camera position and zoom level.

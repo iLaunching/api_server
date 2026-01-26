@@ -3,7 +3,7 @@ Node Connection Model (Tier C)
 Connections (links) between node ports with Bezier curve rendering support
 """
 
-from sqlalchemy import Column, String, Integer, Boolean, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, String, Integer, Boolean, Text, ForeignKey, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from datetime import datetime

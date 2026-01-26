@@ -108,7 +108,7 @@ class CanvasNode(Base):
     # ============================================================================
     # CUSTOM METADATA (for node-specific config)
     # ============================================================================
-    metadata = Column(JSONB, default={}, nullable=False)
+    node_metadata = Column(JSONB, default={}, nullable=False)
     
     # ============================================================================
     # TRACEABILITY

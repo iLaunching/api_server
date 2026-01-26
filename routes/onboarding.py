@@ -141,6 +141,38 @@ async def complete_onboarding(
         
         logger.info("Manifest created for matrix", manifest_id=str(manifest.manifest_id), matrix_id=str(matrix.id))
         
+        # Step 2.6: Create Master Context for the Smart Matrix (Tier B - Context Layer)
+        from models.context import Context
+        
+        master_context = Context(
+            manifest_id=manifest.manifest_id,
+            context_name=f"{request.matrix_name} - Master",
+            context_type="GENESIS",  # Master context type
+            is_master_context=True,  # Mark as master
+            master_dna_payload={
+                "created_via": "onboarding",
+                "hub_name": request.hub_name,
+                "matrix_name": request.matrix_name,
+                "auto_created": True
+            },
+            local_variables={
+                "smart_matrix_id": str(matrix.id),
+                "smart_hub_id": str(hub.id)
+            },
+            is_active=True
+        )
+        
+        db.add(master_context)
+        await db.commit()
+        await db.refresh(master_context)
+        
+        logger.info(
+            "Master context created",
+            context_id=str(master_context.context_id),
+            manifest_id=str(manifest.manifest_id),
+            matrix_id=str(matrix.id)
+        )
+        
         # Step 3: Update UserNavigation to set current_smart_hub_id and current_smart_matrix_id using relationships
         # Load user with profile and navigation relationships
         result = await db.execute(
@@ -306,6 +338,38 @@ async def create_matrix_step(
         await db.refresh(matrix)
         
         logger.info("Manifest created for matrix", manifest_id=str(manifest.manifest_id), matrix_id=str(matrix.id))
+        
+        # Create Master Context for the Smart Matrix (Tier B - Context Layer)
+        from models.context import Context
+        
+        master_context = Context(
+            manifest_id=manifest.manifest_id,
+            context_name=f"{matrix_name} - Master",
+            context_type="GENESIS",
+            is_master_context=True,
+            master_dna_payload={
+                "created_via": "onboarding",
+                "matrix_name": matrix_name,
+                "marketing_source_id": marketing_option_id,
+                "auto_created": True
+            },
+            local_variables={
+                "smart_matrix_id": str(matrix.id),
+                "smart_hub_id": str(hub_uuid)
+            },
+            is_active=True
+        )
+        
+        db.add(master_context)
+        await db.commit()
+        await db.refresh(master_context)
+        
+        logger.info(
+            "Master context created",
+            context_id=str(master_context.context_id),
+            manifest_id=str(manifest.manifest_id),
+            matrix_id=str(matrix.id)
+        )
         
         # Update hub settings
         hub.settings.update({

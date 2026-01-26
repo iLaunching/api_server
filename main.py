@@ -146,7 +146,13 @@ app.include_router(context_router)  # Neural System - Tier B: Context Layer
 
 # Phase 3: Canvas Nodes (Tier C)
 from routes.node_routes import router as node_router
+from routes.connection_routes import router as connection_router
+from routes.template_routes import router as template_router
+
 app.include_router(node_router)  # Neural System - Tier C: Canvas Nodes
+app.include_router(connection_router)  # Neural System - Tier C: Node Connections
+app.include_router(template_router)  # Neural System - Tier C: Node Library
+
 
 
 @app.get("/health")

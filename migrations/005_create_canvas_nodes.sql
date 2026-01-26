@@ -68,7 +68,7 @@ CREATE TABLE tbl_canvas_nodes (
     error_message TEXT,
     
     -- CUSTOM METADATA (for node-specific config)
-    metadata JSONB DEFAULT '{}',
+    node_metadata JSONB DEFAULT '{}',
     
     -- TRACEABILITY
     reference_data_id UUID,

@@ -64,7 +64,7 @@ CREATE TABLE tbl_canvas_nodes (
     
     -- EXECUTION METADATA
     execution_count INTEGER DEFAULT 0,
-    last_execution_time TIMESTAMP WITH TIME ZONE,
+    last_execution_time TEXT,
     error_message TEXT,
     
     -- CUSTOM METADATA (for node-specific config)

@@ -35,6 +35,7 @@ from routes.icons import router as icons_router
 from routes.account import router as account_router
 from routes.worker import router as worker_router
 from routes.manifest_routes import router as manifest_router
+from routes.context_routes import router as context_router
 from services.option_sets_cache import option_sets_cache
 from config.database import init_database, init_redis, close_database, check_database_health, check_redis_health
 
@@ -140,7 +141,13 @@ app.include_router(icons_router, prefix="/api/v1", tags=["icons"])
 app.include_router(account_router, prefix="/api/v1", tags=["account"])
 app.include_router(worker_router, prefix="/api/v1", tags=["worker"])
 app.include_router(onboarding_router)  # Prefix already in router definition
-app.include_router(manifest_router)  # Neural System - Tier A: Master Manifest
+app.include_router(manifest_router)
+app.include_router(context_router)  # Neural System - Tier B: Context Layer
+
+# Phase 3: Canvas Nodes (Tier C)
+from routes.node_routes import router as node_router
+app.include_router(node_router)  # Neural System - Tier C: Canvas Nodes
+
 
 @app.get("/health")
 async def health_check():

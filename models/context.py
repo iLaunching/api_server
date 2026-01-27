@@ -66,9 +66,8 @@ class Context(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     
     # SQLAlchemy Relationships
-    # Note: 'manifest' relationship needs to be defined on Manifest side as well or using backref here
-    # We'll assume a generic relationship setup or add back_populates if Manifest model is updated
-    manifest = relationship("Manifest", backref="contexts")
+    # Note: Specify foreign_keys because Manifest now has master_context_id pointing back to Context
+    manifest = relationship("Manifest", foreign_keys="[Context.manifest_id]", backref="contexts")
     
     # Phase 3: Canvas Nodes relationship
     canvas_nodes = relationship("CanvasNode", back_populates="context", cascade="all, delete-orphan")

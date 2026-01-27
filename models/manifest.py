@@ -82,6 +82,7 @@ class Manifest(Base):
             "manifest_id": str(self.manifest_id),
             "smart_matrix_id": str(self.smart_matrix_id),
             "user_id": str(self.user_id),
+            "master_context_id": str(self.master_context_id) if self.master_context_id else None,
             "current_x": self.current_x,
             "current_y": self.current_y,
             "zoom_level": self.zoom_level,

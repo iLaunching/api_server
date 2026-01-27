@@ -219,6 +219,16 @@ async def complete_onboarding(
             position="(0, 0)"
         )
         
+        # Step 2.8: Link manifest to master context (optimization)
+        manifest.master_context_id = master_context.context_id
+        await db.commit()
+        
+        logger.info(
+            "Manifest linked to master context",
+            manifest_id=str(manifest.manifest_id),
+            master_context_id=str(master_context.context_id)
+        )
+        
         # Step 3: Update UserNavigation to set current_smart_hub_id and current_smart_matrix_id using relationships
         # Load user with profile and navigation relationships
         result = await db.execute(
@@ -461,6 +471,16 @@ async def create_matrix_step(
             node_id=str(master_node.node_id),
             context_id=str(master_context.context_id),
             position="(0, 0)"
+        )
+        
+        # Link manifest to master context (optimization)
+        manifest.master_context_id = master_context.context_id
+        await db.commit()
+        
+        logger.info(
+            "Manifest linked to master context",
+            manifest_id=str(manifest.manifest_id),
+            master_context_id=str(master_context.context_id)
         )
         
         # Update hub settings

@@ -42,6 +42,14 @@ class Manifest(Base):
     )
     user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     
+    # Master Context reference (optimization for canvas loading)
+    master_context_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("tbl_contexts.context_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
+    
     # Spatial state (camera position and zoom)
     current_x = Column(Float, default=0.0, nullable=False)
     current_y = Column(Float, default=0.0, nullable=False)

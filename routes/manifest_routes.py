@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 from pydantic import BaseModel, Field
+from typing import Optional
 import uuid
 import structlog
 
@@ -52,6 +53,7 @@ class ManifestResponse(BaseModel):
     manifest_id: uuid.UUID
     smart_matrix_id: uuid.UUID
     user_id: uuid.UUID
+    master_context_id: Optional[uuid.UUID] = None  # For canvas loading optimization
     current_x: float
     current_y: float
     zoom_level: float

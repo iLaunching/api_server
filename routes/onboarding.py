@@ -173,6 +173,62 @@ async def complete_onboarding(
             matrix_id=str(matrix.id)
         )
         
+        # Step 2.7: Create Master Smart Matrix Node (Tier C - Canvas Nodes)
+        from models.canvas_node import CanvasNode
+        
+        master_node = CanvasNode(
+            context_id=master_context.context_id,
+            node_name=request.matrix_name,
+            node_description=f"Master Smart Matrix for {request.hub_name}",
+            node_type="smart-matrix",
+            pos_x=0.0,  # Center of canvas
+            pos_y=0.0,  # Center of canvas
+            width=300,
+            height=300,
+            color="#8b5cf6",  # Purple color for Smart Matrix
+            port_config={
+                "inputs": [],
+                "outputs": [
+                    {
+                        "id": "output",
+                        "dataType": "any",
+                        "label": "Master Output"
+                    }
+                ]
+            },
+            is_master_bridge=True,  # This is the sovereign node
+            node_dna_overrides={},
+            operational_status="STABLE",
+            visual_state="IDLE",
+            node_metadata={
+                "created_via": "onboarding",
+                "is_original_matrix": True,
+                "hub_name": request.hub_name,
+                "matrix_name": request.matrix_name
+            }
+        )
+        
+        db.add(master_node)
+        await db.commit()
+        await db.refresh(master_node)
+        
+        logger.info(
+            "Master Smart Matrix node created",
+            node_id=str(master_node.node_id),
+            context_id=str(master_context.context_id),
+            position="(0, 0)"
+        )
+        
+        # Step 2.8: Link manifest to master context (optimization)
+        manifest.master_context_id = master_context.context_id
+        await db.commit()
+        
+        logger.info(
+            "Manifest linked to master context",
+            manifest_id=str(manifest.manifest_id),
+            master_context_id=str(master_context.context_id)
+        )
+        
         # Step 3: Update UserNavigation to set current_smart_hub_id and current_smart_matrix_id using relationships
         # Load user with profile and navigation relationships
         result = await db.execute(
@@ -369,6 +425,62 @@ async def create_matrix_step(
             context_id=str(master_context.context_id),
             manifest_id=str(manifest.manifest_id),
             matrix_id=str(matrix.id)
+        )
+        
+        # Create Master Smart Matrix Node (Tier C - Canvas Nodes)
+        from models.canvas_node import CanvasNode
+        
+        master_node = CanvasNode(
+            context_id=master_context.context_id,
+            node_name=matrix_name,
+            node_description=f"Master Smart Matrix",
+            node_type="smart-matrix",
+            pos_x=0.0,  # Center of canvas
+            pos_y=0.0,  # Center of canvas
+            width=300,
+            height=300,
+            color="#8b5cf6",  # Purple color for Smart Matrix
+            port_config={
+                "inputs": [],
+                "outputs": [
+                    {
+                        "id": "output",
+                        "dataType": "any",
+                        "label": "Master Output"
+                    }
+                ]
+            },
+            is_master_bridge=True,  # This is the sovereign node
+            node_dna_overrides={},
+            operational_status="STABLE",
+            visual_state="IDLE",
+            node_metadata={
+                "created_via": "onboarding",
+                "is_original_matrix": True,
+                "matrix_name": matrix_name,
+                "marketing_source_id": marketing_option_id
+            }
+        )
+        
+        db.add(master_node)
+        await db.commit()
+        await db.refresh(master_node)
+        
+        logger.info(
+            "Master Smart Matrix node created",
+            node_id=str(master_node.node_id),
+            context_id=str(master_context.context_id),
+            position="(0, 0)"
+        )
+        
+        # Link manifest to master context (optimization)
+        manifest.master_context_id = master_context.context_id
+        await db.commit()
+        
+        logger.info(
+            "Manifest linked to master context",
+            manifest_id=str(manifest.manifest_id),
+            master_context_id=str(master_context.context_id)
         )
         
         # Update hub settings

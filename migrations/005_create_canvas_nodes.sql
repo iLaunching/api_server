@@ -64,7 +64,7 @@ CREATE TABLE tbl_canvas_nodes (
     
     -- EXECUTION METADATA
     execution_count INTEGER DEFAULT 0,
-    last_execution_time TIMESTAMP WITH TIME ZONE,
+    last_execution_time TEXT,
     error_message TEXT,
     
     -- CUSTOM METADATA (for node-specific config)
@@ -72,8 +72,8 @@ CREATE TABLE tbl_canvas_nodes (
     
     -- TRACEABILITY
     reference_data_id UUID,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::TEXT,
+    updated_at TEXT DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::TEXT
 );
 
 -- Indexes for performance
@@ -122,8 +122,8 @@ CREATE TABLE tbl_node_connections (
     }',
     
     -- TRACEABILITY
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::TEXT,
+    updated_at TEXT DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::TEXT,
     
     -- CONSTRAINTS
     -- Ensure unique connections (no duplicate links)
@@ -175,7 +175,7 @@ CREATE TABLE tbl_node_templates (
     description TEXT,
     category VARCHAR(50), -- 'communication', 'logic', 'data', 'ai'
     is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::TEXT
 );
 
 -- Indexes for fast lookups

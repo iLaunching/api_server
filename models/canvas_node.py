@@ -102,7 +102,7 @@ class CanvasNode(Base):
     # EXECUTION METADATA
     # ============================================================================
     execution_count = Column(Integer, default=0)
-    last_execution_time = Column(Text)  # ISO 8601 timestamp string
+    last_execution_time = Column(Text)  # Changed to Text to match created_at/updated_at pattern
     error_message = Column(Text)
     
     # ============================================================================

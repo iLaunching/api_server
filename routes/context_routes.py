@@ -161,6 +161,53 @@ async def create_context(
             detail="Failed to create context"
         )
 
+@router.get("/s/manifest/{manifest_id}/master", status_code=status.HTTP_200_OK)
+async def get_master_context_by_manifest(
+    manifest_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    session: dict = Depends(get_current_session)
+):
+    """
+    Get the master context for a given manifest.
+    Used by frontend to load canvas state.
+    """
+    try:
+        # Query for master context by manifest_id
+        result = await db.execute(
+            select(Context).where(
+                Context.manifest_id == manifest_id,
+                Context.is_master_context == True
+            )
+        )
+        context = result.scalar_one_or_none()
+        
+        if not context:
+            logger.warning("Master context not found", manifest_id=str(manifest_id))
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Master context not found for manifest {manifest_id}"
+            )
+        
+        logger.info("Master context retrieved", context_id=str(context.context_id), manifest_id=str(manifest_id))
+        
+        return {
+            "context_id": str(context.context_id),
+            "manifest_id": str(context.manifest_id),
+            "context_name": context.context_name,
+            "context_type": context.context_type,
+            "is_master_context": context.is_master_context,
+            "is_active": context.is_active
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to get master context", manifest_id=str(manifest_id), error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get master context: {str(e)}"
+        )
+
 @router.get("/{context_id}", response_model=ContextResponse)
 async def get_context(
     context_id: uuid.UUID,

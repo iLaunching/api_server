@@ -47,8 +47,8 @@ class Context(Base):
     context_type = Column(String(50), nullable=False, index=True) 
     
     # Spatial Data (SRID 0 = Cartesian 2D Plane)
-    # boundary_polygon = Column(Geometry('POLYGON', srid=0))
-    boundary_polygon = Column(Text, nullable=True) # Fallback from GEOMETRY due to missing PostGIS in dev
+    boundary_polygon = Column(Geometry('POLYGON', srid=0))
+    # boundary_polygon = Column(Text, nullable=True) # Fallback from GEOMETRY due to missing PostGIS in dev
     
     # DNA Handshake
     inherited_intent = Column(Text, nullable=True) # Populated by DB trigger

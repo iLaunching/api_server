@@ -71,6 +71,7 @@ async def lifespan(app: FastAPI):
     global redis_client
     await init_database()
     redis_client = await init_redis()
+    await option_sets_cache.load_cache()
     
     yield
     
@@ -110,9 +111,9 @@ app.add_middleware(
 app.include_router(analysis_router)
 app.include_router(status_router)
 app.include_router(streaming_router)
-app.include_router(appearance_router)
-app.include_router(smart_hub_router)
-app.include_router(icons_router)
+app.include_router(appearance_router, prefix="/api/v1", tags=["appearance"])
+app.include_router(smart_hub_router, prefix="/api/v1", tags=["smart-hub"])
+app.include_router(icons_router, prefix="/api/v1", tags=["icons"])
 app.include_router(account_router, prefix="/api/v1", tags=["account"])
 app.include_router(worker_router, prefix="/api/v1", tags=["worker"])
 app.include_router(onboarding_router)

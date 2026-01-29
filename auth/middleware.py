@@ -50,7 +50,8 @@ async def get_current_session(credentials: Optional[HTTPAuthorizationCredentials
             logger.info("Auth API response", status=response.status_code)
             
             if response.status_code == 401:
-                logger.warning("Token validation failed - 401 from auth-api")
+                logger.warning(f"Token validation failed - 401 from auth-api at {AUTH_API_URL}", 
+                             response_text=response.text[:200])
                 raise HTTPException(
                     status_code=401,
                     detail="Invalid or expired token",

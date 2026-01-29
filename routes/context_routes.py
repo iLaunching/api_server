@@ -16,7 +16,7 @@ import json
 
 from config.database import get_db
 from models.context import Context
-from models.manifest import Manifest
+from models.database_models import SmartMatrix
 from auth.middleware import get_current_session
 
 logger = structlog.get_logger()
@@ -30,7 +30,7 @@ router = APIRouter(prefix="/api/v1/context", tags=["context"])
 
 class ContextCreate(BaseModel):
     """Schema for creating a new context"""
-    manifest_id: uuid.UUID = Field(..., description="Parent Manifest UUID")
+    smart_matrix_id: uuid.UUID = Field(..., description="Parent Smart Matrix UUID")
     context_name: str = Field(..., description="Display name for the context")
     context_type: str = Field(..., description="Type: CAMPAIGN, GOAL, PROJECT, etc.")
     
@@ -53,7 +53,7 @@ class ContextCreate(BaseModel):
 class ContextResponse(BaseModel):
     """Schema for context response"""
     context_id: uuid.UUID
-    manifest_id: uuid.UUID
+    smart_matrix_id: uuid.UUID
     context_name: str
     context_type: str
     inherited_intent: Optional[str]
@@ -84,24 +84,26 @@ async def create_context(
 ):
     """
     Create a new Context container.
-    - Validates Manifest existence.
+    - Validates SmartMatrix existence.
     - Creates Context entry.
     - DB Trigger 'context_dna_handshake' will auto-populate inherited_intent.
     """
-    user_id = current_session.get("user_id")
+    user_id = uuid.UUID(current_session.get("id"))
     
-    # Verify Manifest ownership
-    stmt = select(Manifest).where(
-        Manifest.manifest_id == context_data.manifest_id,
-        Manifest.user_id == user_id
+    # Verify SmartMatrix ownership
+    stmt = select(SmartMatrix).where(
+        SmartMatrix.id == context_data.smart_matrix_id,
+        SmartMatrix.owner_id == user_id
     )
     result = await db.execute(stmt)
-    manifest = result.scalar_one_or_none()
+    matrix = result.scalar_one_or_none()
     
-    if not manifest:
+    if not matrix:
+        # Also check if it's the Smart Hub's owner if checking matrix ownership is indirect?
+        # But SmartMatrix.owner_id should match user_id.
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, 
-            detail="Manifest not found or access denied"
+            detail="Smart Matrix not found or access denied"
         )
 
     # Process Geometry
@@ -117,7 +119,7 @@ async def create_context(
             )
 
     new_context = Context(
-        manifest_id=context_data.manifest_id,
+        smart_matrix_id=context_data.smart_matrix_id,
         context_name=context_data.context_name,
         context_type=context_data.context_type,
         boundary_polygon=boundary_geom,
@@ -140,7 +142,7 @@ async def create_context(
         
         return ContextResponse(
             context_id=new_context.context_id,
-            manifest_id=new_context.manifest_id,
+            smart_matrix_id=new_context.smart_matrix_id,
             context_name=new_context.context_name,
             context_type=new_context.context_type,
             inherited_intent=new_context.inherited_intent,

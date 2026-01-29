@@ -34,7 +34,7 @@ from routes.smart_hub import router as smart_hub_router
 from routes.icons import router as icons_router
 from routes.account import router as account_router
 from routes.worker import router as worker_router
-from routes.manifest_routes import router as manifest_router
+from routes.smart_matrix_routes import router as smart_matrix_router
 from routes.context_routes import router as context_router
 from services.option_sets_cache import option_sets_cache
 from config.database import init_database, init_redis, close_database, check_database_health, check_redis_health
@@ -65,93 +65,68 @@ websocket_connections: Dict[str, WebSocket] = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifecycle management"""
-    global redis_client
-    
+    """Lifecycle events: startup and shutdown"""
     # Startup
-    logger.info("Starting API server...")
-    
-    # Initialize Database
-    try:
-        await init_database()
-        logger.info("Database initialized successfully")
-    except Exception as e:
-        logger.error("Failed to initialize database", error=str(e))
-        # Don't fail startup - continue without database for development
-    
-    # Initialize Redis connection
-    try:
-        redis_client = await init_redis()
-        logger.info("Redis initialized successfully")
-    except Exception as e:
-        logger.error("Failed to connect to Redis", error=str(e))
-        redis_client = None
-        # Don't fail startup - continue without Redis for development
-    
-    # Initialize Appearance Cache
-    try:
-        await option_sets_cache.load_cache()
-        logger.info("Appearance cache initialized successfully")
-    except Exception as e:
-        logger.error("Failed to initialize appearance cache", error=str(e))
-        # Don't fail startup - continue without cache for development
+    logger.info("Starting API Server", version="2.0.1")
+    global redis_client
+    await init_database()
+    redis_client = await init_redis()
     
     yield
     
     # Shutdown
-    logger.info("Shutting down API server...")
+    logger.info("Shutting down API Server")
     await close_database()
+    if redis_client:
+        await redis_client.close()
 
-# Create FastAPI app
 app = FastAPI(
     title="Business AI Advisor API",
-    description="AI-powered business analysis, streaming, and theme management. Auth handled by AUTH-API.",
-    version="2.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    version="2.0.1", 
+    description="API for AI-powered business analysis and Smart Matrix orchestration",
     lifespan=lifespan
 )
 
-# CORS middleware - allow frontend access
-# Default to allow all origins for development
-allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "*")
-if allowed_origins_str == "*":
-    allowed_origins = ["*"]
-else:
-    allowed_origins = [origin.strip() for origin in allowed_origins_str.split(",")]
-
-logger.info("CORS configuration", allowed_origins=allowed_origins, credentials=True)
+# CORS Configuration
+origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000", 
+    "https://aibuildd-v1.bubbleapps.io",
+    "https://ilaunching.com",
+    "https://app.ilaunching.com",
+    "*"  # Allow all for development
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"],
+    expose_headers=["*"]
 )
 
-# Include routers - Business Logic: Analysis + Status + WebSocket streaming + Appearance + Onboarding + Smart Hub + Icons
-app.include_router(analysis_router, prefix="/api/v1", tags=["analysis"])
-app.include_router(status_router, prefix="/api/v1", tags=["status"])
-app.include_router(streaming_router, prefix="/api/v1", tags=["streaming"])
-app.include_router(appearance_router, prefix="/api/v1", tags=["appearance"])
-app.include_router(smart_hub_router, prefix="/api/v1", tags=["smart-hub"])
-app.include_router(icons_router, prefix="/api/v1", tags=["icons"])
+# Include routers
+app.include_router(analysis_router)
+app.include_router(status_router)
+app.include_router(streaming_router)
+app.include_router(appearance_router)
+app.include_router(smart_hub_router)
+app.include_router(icons_router)
 app.include_router(account_router, prefix="/api/v1", tags=["account"])
 app.include_router(worker_router, prefix="/api/v1", tags=["worker"])
-app.include_router(onboarding_router)  # Prefix already in router definition
-app.include_router(manifest_router)
-app.include_router(context_router)  # Neural System - Tier B: Context Layer
+app.include_router(onboarding_router)
+app.include_router(smart_matrix_router)
+app.include_router(context_router)
 
 # Phase 3: Canvas Nodes (Tier C)
 from routes.node_routes import router as node_router
 from routes.connection_routes import router as connection_router
 from routes.template_routes import router as template_router
 
-app.include_router(node_router)  # Neural System - Tier C: Canvas Nodes
-app.include_router(connection_router)  # Neural System - Tier C: Node Connections
-app.include_router(template_router)  # Neural System - Tier C: Node Library
+app.include_router(node_router)
+app.include_router(connection_router)
+app.include_router(template_router)
 
 
 

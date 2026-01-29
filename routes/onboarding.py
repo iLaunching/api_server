@@ -16,7 +16,7 @@ import structlog
 
 from config.database import get_db
 from models.database_models import SmartHub, SmartMatrix, UserNavigation
-from models.manifest import Manifest
+# from models.manifest import Manifest  # Removed after refactor
 from models.user import User, UserProfile
 from auth.middleware import get_current_session
 
@@ -119,33 +119,21 @@ async def complete_onboarding(
             order_number=0
         )
         
+        # Step 2.5: Set Business DNA directly on Matrix
+        await matrix.update_business_dna(db, {
+            "intent": "New business journey",
+            "created_via": "onboarding",
+            "hub_name": request.hub_name,
+            "matrix_name": request.matrix_name
+        })
+        
         logger.info("Smart matrix created", matrix_id=str(matrix.id), hub_id=str(hub.id))
-        
-        # Step 2.5: Create Manifest for the Smart Matrix (Tier A - Neural System)
-        manifest = await Manifest.create(
-            db=db,
-            smart_matrix_id=matrix.id,
-            user_id=user_id,
-            business_dna={
-                "intent": "New business journey",
-                "created_via": "onboarding",
-                "hub_name": request.hub_name,
-                "matrix_name": request.matrix_name
-            }
-        )
-        
-        # Update bidirectional relationship
-        matrix.manifest_id = manifest.manifest_id
-        await db.commit()
-        await db.refresh(matrix)
-        
-        logger.info("Manifest created for matrix", manifest_id=str(manifest.manifest_id), matrix_id=str(matrix.id))
         
         # Step 2.6: Create Master Context for the Smart Matrix (Tier B - Context Layer)
         from models.context import Context
         
         master_context = Context(
-            manifest_id=manifest.manifest_id,
+            smart_matrix_id=matrix.id,
             context_name=f"{request.matrix_name} - Master",
             context_type="GENESIS",  # Master context type
             is_master_context=True,  # Mark as master
@@ -169,7 +157,6 @@ async def complete_onboarding(
         logger.info(
             "Master context created",
             context_id=str(master_context.context_id),
-            manifest_id=str(manifest.manifest_id),
             matrix_id=str(matrix.id)
         )
         
@@ -219,13 +206,13 @@ async def complete_onboarding(
             position="(0, 0)"
         )
         
-        # Step 2.8: Link manifest to master context (optimization)
-        manifest.master_context_id = master_context.context_id
+        # Step 2.8: Link matrix to master context (optimization)
+        matrix.master_context_id = master_context.context_id
         await db.commit()
         
         logger.info(
-            "Manifest linked to master context",
-            manifest_id=str(manifest.manifest_id),
+            "Matrix linked to master context",
+            matrix_id=str(matrix.id),
             master_context_id=str(master_context.context_id)
         )
         
@@ -373,33 +360,21 @@ async def create_matrix_step(
             order_number=0
         )
         
+        # Set Business DNA
+        await matrix.update_business_dna(db, {
+            "intent": "New business journey",
+            "created_via": "onboarding",
+            "matrix_name": matrix_name,
+            "marketing_source_id": marketing_option_id
+        })
+        
         logger.info("Smart matrix created", matrix_id=str(matrix.id), hub_id=str(hub_uuid))
-        
-        # Create Manifest for the Smart Matrix (Tier A - Neural System)
-        manifest = await Manifest.create(
-            db=db,
-            smart_matrix_id=matrix.id,
-            user_id=user_id,
-            business_dna={
-                "intent": "New business journey",
-                "created_via": "onboarding",
-                "matrix_name": matrix_name,
-                "marketing_source_id": marketing_option_id
-            }
-        )
-        
-        # Update bidirectional relationship
-        matrix.manifest_id = manifest.manifest_id
-        await db.commit()
-        await db.refresh(matrix)
-        
-        logger.info("Manifest created for matrix", manifest_id=str(manifest.manifest_id), matrix_id=str(matrix.id))
         
         # Create Master Context for the Smart Matrix (Tier B - Context Layer)
         from models.context import Context
         
         master_context = Context(
-            manifest_id=manifest.manifest_id,
+            smart_matrix_id=matrix.id,
             context_name=f"{matrix_name} - Master",
             context_type="GENESIS",
             is_master_context=True,
@@ -423,7 +398,6 @@ async def create_matrix_step(
         logger.info(
             "Master context created",
             context_id=str(master_context.context_id),
-            manifest_id=str(manifest.manifest_id),
             matrix_id=str(matrix.id)
         )
         
@@ -473,13 +447,13 @@ async def create_matrix_step(
             position="(0, 0)"
         )
         
-        # Link manifest to master context (optimization)
-        manifest.master_context_id = master_context.context_id
+        # Link matrix to master context (optimization)
+        matrix.master_context_id = master_context.context_id
         await db.commit()
         
         logger.info(
-            "Manifest linked to master context",
-            manifest_id=str(manifest.manifest_id),
+            "Matrix linked to master context",
+            matrix_id=str(matrix.id),
             master_context_id=str(master_context.context_id)
         )
         

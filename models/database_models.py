@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from sqlalchemy import (
-    Column, String, Integer, DateTime, Text, 
+    Column, String, Integer, DateTime, Text, Float,
     ForeignKey, DECIMAL, ARRAY, Boolean, func
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
@@ -502,29 +502,33 @@ class SmartMatrix(Base):
     color = Column(Text)  # Color theme for this matrix
     order_number = Column(Integer, default=0)  # Display order within hub
     
-    # Direct reference to manifest (for fast access)
-    manifest_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("tbl_manifest.manifest_id", ondelete="SET NULL"),
-        nullable=True,
-        unique=True,  # One-to-one relationship
-        index=True
-    )
+    # Spatial state (camera position and zoom)
+    current_x = Column(Float, default=0.0, nullable=False)
+    current_y = Column(Float, default=0.0, nullable=False)
+    zoom_level = Column(Float, default=1.0, nullable=False)
     
-    # Timestamps
+    # Business DNA (founder intent, constraints, style)
+    business_dna = Column(JSONB, default={})
+    
+    # Status and timestamps
+    last_heartbeat = Column(DateTime(timezone=True), default=func.now())
+    is_active = Column(Boolean, default=True, index=True)
     created_at = Column(DateTime(timezone=True), default=func.now(), index=True)
     modified_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
     
-    # Relationships
-    smart_hub = relationship("SmartHub", back_populates="smart_matrix")
-    manifest = relationship(
-        "Manifest",
-        primaryjoin="foreign(SmartMatrix.manifest_id) == remote(Manifest.manifest_id)",
-        uselist=False  # One-to-one
+    # Master Context reference (optimization for canvas loading)
+    master_context_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("tbl_contexts.context_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
     )
     
+    # Relationships
+    smart_hub = relationship("SmartHub", back_populates="smart_matrix")
+    
     def __repr__(self):
-        return f"<SmartMatrix(id={self.id}, name={self.name}, smart_hub_id={self.smart_hub_id})>"
+        return f"<SmartMatrix(id={self.id}, name={self.name}, position=({self.current_x}, {self.current_y}), zoom={self.zoom_level})>"
     
     def to_dict(self):
         """Convert smart matrix to dictionary"""
@@ -535,10 +539,57 @@ class SmartMatrix(Base):
             "name": self.name,
             "color": self.color,
             "order_number": self.order_number,
-            "manifest_id": str(self.manifest_id) if self.manifest_id else None,
+            "current_x": self.current_x,
+            "current_y": self.current_y,
+            "zoom_level": self.zoom_level,
+            "business_dna": self.business_dna,
+            "last_heartbeat": self.last_heartbeat.isoformat() if self.last_heartbeat else None,
+            "is_active": self.is_active,
+            "master_context_id": str(self.master_context_id) if self.master_context_id else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "modified_at": self.modified_at.isoformat() if self.modified_at else None,
         }
+        
+    async def update_position(self, db: AsyncSession, current_x: float, current_y: float, 
+                             zoom_level: Optional[float] = None):
+        """
+        Update camera position and zoom level.
+        """
+        self.current_x = current_x
+        self.current_y = current_y
+        if zoom_level is not None:
+            self.zoom_level = zoom_level
+        self.last_heartbeat = func.now()
+        
+        await db.commit()
+        await db.refresh(self)
+        logger.info(
+            "SmartMatrix position updated",
+            matrix_id=str(self.id),
+            position=(current_x, current_y),
+            zoom=zoom_level
+        )
+    
+    async def update_business_dna(self, db: AsyncSession, business_dna: Dict[str, Any]):
+        """
+        Update business DNA (founder intent, constraints, style).
+        """
+        self.business_dna = business_dna
+        self.last_heartbeat = func.now()
+        
+        await db.commit()
+        await db.refresh(self)
+        logger.info(
+            "SmartMatrix business DNA updated",
+            matrix_id=str(self.id),
+            dna_keys=list(business_dna.keys())
+        )
+    
+    async def heartbeat(self, db: AsyncSession):
+        """Update last_heartbeat timestamp"""
+        self.last_heartbeat = func.now()
+        await db.commit()
+        await db.refresh(self)
     
     @classmethod
     async def create(cls, db: AsyncSession, **kwargs) -> "SmartMatrix":

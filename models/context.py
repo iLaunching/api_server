@@ -35,9 +35,9 @@ class Context(Base):
     context_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     
     # Relationships
-    manifest_id = Column(
+    smart_matrix_id = Column(
         UUID(as_uuid=True), 
-        ForeignKey("tbl_manifest.manifest_id", ondelete="CASCADE"),
+        ForeignKey("smart_matrices.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
@@ -47,7 +47,8 @@ class Context(Base):
     context_type = Column(String(50), nullable=False, index=True) 
     
     # Spatial Data (SRID 0 = Cartesian 2D Plane)
-    boundary_polygon = Column(Geometry('POLYGON', srid=0))
+    # boundary_polygon = Column(Geometry('POLYGON', srid=0))
+    boundary_polygon = Column(Text, nullable=True) # Fallback from GEOMETRY due to missing PostGIS in dev
     
     # DNA Handshake
     inherited_intent = Column(Text, nullable=True) # Populated by DB trigger
@@ -66,8 +67,7 @@ class Context(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     
     # SQLAlchemy Relationships
-    # Note: Specify foreign_keys because Manifest now has master_context_id pointing back to Context
-    manifest = relationship("Manifest", foreign_keys="[Context.manifest_id]", backref="contexts")
+    smart_matrix = relationship("SmartMatrix", foreign_keys="[Context.smart_matrix_id]", backref="contexts")
     
     # Phase 3: Canvas Nodes relationship
     canvas_nodes = relationship("CanvasNode", back_populates="context", cascade="all, delete-orphan")

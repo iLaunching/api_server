@@ -24,7 +24,7 @@ async def get_smart_matrix(
     db: AsyncSession = Depends(get_db),
     session: Dict = Depends(get_current_session)
 ):
-    user_id = uuid.UUID(session.get("id"))
+    user_id = uuid.UUID(session.get("user_id"))
     """
     Get a Smart Matrix by ID.
     Now includes Business DNA, camera position, and master context status.
@@ -49,7 +49,7 @@ async def update_position(
     session: Dict = Depends(get_current_session)
 ):
     """Updates the camera definition (x, y, zoom) of the user's view."""
-    user_id = uuid.UUID(session.get("id"))
+    user_id = uuid.UUID(session.get("user_id"))
     matrix = await SmartMatrix.get_by_id(db, matrix_id)
     if not matrix:
         raise HTTPException(status_code=404, detail="Matrix not found")
@@ -70,7 +70,7 @@ async def update_business_dna(
     session: Dict = Depends(get_current_session)
 ):
     """Updates the Business DNA (Intent, Constraints, Style)"""
-    user_id = uuid.UUID(session.get("id"))
+    user_id = uuid.UUID(session.get("user_id"))
     matrix = await SmartMatrix.get_by_id(db, matrix_id)
     if not matrix:
         raise HTTPException(status_code=404, detail="Matrix not found")
@@ -85,7 +85,7 @@ async def matrix_heartbeat(
     session: Dict = Depends(get_current_session)
 ):
     """Keep-alive heartbeat for this matrix session"""
-    user_id = uuid.UUID(session.get("id"))
+    user_id = uuid.UUID(session.get("user_id"))
     matrix = await SmartMatrix.get_by_id(db, matrix_id)
     if matrix:
         await matrix.heartbeat(db)

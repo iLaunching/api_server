@@ -19,7 +19,7 @@ logger = structlog.get_logger()
 security = HTTPBearer(auto_error=False)
 
 # Auth API URL
-AUTH_API_URL = os.getenv("AUTH_API_URL", "https://ilaunching-servers-production-auth.up.railway.app")
+AUTH_API_URL = os.getenv("AUTH_API_URL", "https://auth-server-production-b51c.up.railway.app")
 
 async def get_current_session(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> Dict:
     """

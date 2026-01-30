@@ -409,8 +409,8 @@ async def create_matrix_step(
             node_name=matrix_name,
             node_description=f"Master Smart Matrix",
             node_type="smart-matrix",
-            pos_x=0.0,  # Center of canvas
-            pos_y=0.0,  # Center of canvas
+            pos_x=-150.0,  # Centered at (0,0) (top-left offset by half width)
+            pos_y=-150.0,  # Centered at (0,0) (top-left offset by half height)
             width=300,
             height=300,
             color="#8b5cf6",  # Purple color for Smart Matrix

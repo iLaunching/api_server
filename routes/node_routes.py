@@ -158,7 +158,7 @@ async def create_node(
         text_color=node_data.text_color,
         port_config=node_data.port_config,
         is_master_bridge=node_data.is_master_bridge,
-        metadata=node_data.metadata
+        node_metadata=node_data.metadata
     )
     
     try:
@@ -190,7 +190,7 @@ async def create_node(
             execution_count=new_node.execution_count,
             last_execution_time=new_node.last_execution_time,
             error_message=new_node.error_message,
-            metadata=new_node.metadata or {},
+            metadata=new_node.node_metadata or {},
             created_at=new_node.created_at,
             updated_at=new_node.updated_at
         )
@@ -269,7 +269,7 @@ async def get_context_nodes(
             execution_count=node.execution_count,
             last_execution_time=node.last_execution_time,
             error_message=node.error_message,
-            metadata=node.metadata or {},
+            metadata=node.node_metadata or {},
             created_at=node.created_at,
             updated_at=node.updated_at
         ) for node in nodes
@@ -323,7 +323,7 @@ async def update_node_position(
             execution_count=node.execution_count,
             last_execution_time=node.last_execution_time,
             error_message=node.error_message,
-            metadata=node.metadata or {},
+            metadata=node.node_metadata or {},
             created_at=node.created_at,
             updated_at=node.updated_at
         )
@@ -389,7 +389,7 @@ async def update_node_state(
             execution_count=node.execution_count,
             last_execution_time=node.last_execution_time,
             error_message=node.error_message,
-            metadata=node.metadata or {},
+            metadata=node.node_metadata or {},
             created_at=node.created_at,
             updated_at=node.updated_at
         )

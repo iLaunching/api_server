@@ -79,7 +79,10 @@ class ConnectionValidator:
         )
         
         if output_already_connected:
-            return False, "Output port already connected (use Router Context for branching)"
+            # Exception: Routers can have multiple connections per output (Fan-Out)
+            is_router = source_node.node_type in ['smart-router', 'condition-router', 'router']
+            if not is_router:
+                return False, "Output port already connected (use a Router for branching)"
         
         # Rule 5: Data type compatibility
         source_data_type = source_port.get('dataType', 'any')

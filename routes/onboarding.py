@@ -415,7 +415,13 @@ async def create_matrix_step(
             height=300,
             color="#8b5cf6",  # Purple color for Smart Matrix
             port_config={
-                "inputs": [],
+                "inputs": [
+                    {
+                        "id": "input",
+                        "dataType": "any",
+                        "label": "Master Input"
+                    }
+                ],
                 "outputs": [
                     {
                         "id": "output",

@@ -1,2 +1,3 @@
-# Trigger redeploy
-Fri Dec  5 14:17:23 UTC 2025
+# Railway Deployment Trigger
+# Last updated: 2026-02-10T21:10:00Z
+# Trigger reason: Force redeploy after pushing protocol changes to api-repo

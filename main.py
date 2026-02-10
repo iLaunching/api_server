@@ -36,6 +36,8 @@ from routes.account import router as account_router
 from routes.worker import router as worker_router
 from routes.smart_matrix_routes import router as smart_matrix_router
 from routes.context_routes import router as context_router
+from routes.node_definition_routes import router as node_definition_router
+from routes.protocol_routes import router as protocol_router
 from services.option_sets_cache import option_sets_cache
 from config.database import init_database, init_redis, close_database, check_database_health, check_redis_health
 
@@ -128,6 +130,8 @@ from routes.template_routes import router as template_router
 app.include_router(node_router)
 app.include_router(connection_router)
 app.include_router(template_router)
+app.include_router(node_definition_router)
+app.include_router(protocol_router)
 
 
 

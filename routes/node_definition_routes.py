@@ -15,7 +15,7 @@ from models.node_definition import (
     NodeDefinitionList,
     CreateNodeFromDefinition
 )
-from auth.middleware import get_current_user
+from auth.middleware import get_current_session
 from database import get_db_pool
 
 router = APIRouter(prefix="/api/nodes/definitions", tags=["Node Definitions"])
@@ -26,7 +26,7 @@ async def get_node_definitions(
     category: Optional[str] = Query(None, description="Filter by category: GENESIS, CAMPAIGN, or VALIDATION"),
     active_only: bool = Query(True, description="Only return active definitions"),
     pool: asyncpg.Pool = Depends(get_db_pool),
-    current_user: dict = Depends(get_current_user)
+    current_session: dict = Depends(get_current_session)
 ):
     """
     Get all node definitions, optionally filtered by category.
@@ -98,7 +98,7 @@ async def get_node_definitions(
 async def get_node_definition(
     def_id: UUID,
     pool: asyncpg.Pool = Depends(get_db_pool),
-    current_user: dict = Depends(get_current_user)
+    current_session: dict = Depends(get_current_session)
 ):
     """Get a specific node definition by ID"""
     
@@ -138,7 +138,7 @@ async def get_node_definition(
 async def create_node_definition(
     definition: NodeDefinitionCreate,
     pool: asyncpg.Pool = Depends(get_db_pool),
-    current_user: dict = Depends(get_current_user)
+    current_session: dict = Depends(get_current_session)
 ):
     """
     Create a new node definition.
@@ -195,7 +195,7 @@ async def update_node_definition(
     def_id: UUID,
     updates: NodeDefinitionUpdate,
     pool: asyncpg.Pool = Depends(get_db_pool),
-    current_user: dict = Depends(get_current_user)
+    current_session: dict = Depends(get_current_session)
 ):
     """Update an existing node definition"""
     
@@ -284,7 +284,7 @@ async def delete_node_definition(
     def_id: UUID,
     hard_delete: bool = Query(False, description="Permanently delete instead of soft delete"),
     pool: asyncpg.Pool = Depends(get_db_pool),
-    current_user: dict = Depends(get_current_user)
+    current_session: dict = Depends(get_current_session)
 ):
     """
     Delete a node definition.

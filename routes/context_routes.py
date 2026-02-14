@@ -50,6 +50,15 @@ class ContextCreate(BaseModel):
             raise ValueError('Name cannot be empty')
         return v
 
+class ContextUpdate(BaseModel):
+    """Schema for updating a context"""
+    context_name: Optional[str] = Field(None, description="Display name")
+    context_type: Optional[str] = Field(None, description="Type: CAMPAIGN, GOAL, etc.")
+    current_protocol_id: Optional[uuid.UUID] = Field(None, description="Active protocol")
+    local_variables: Optional[Dict[str, Any]] = None
+    is_active: Optional[bool] = None
+    master_dna_payload: Optional[Dict[str, Any]] = None
+
 class ContextResponse(BaseModel):
     """Schema for context response"""
     context_id: uuid.UUID
@@ -272,3 +281,68 @@ async def list_manifest_contexts(
             created_at=ctx.created_at.isoformat()
         ) for ctx in contexts
     ]
+
+@router.patch("/{context_id}", response_model=ContextResponse)
+async def update_context(
+    context_id: uuid.UUID,
+    update_data: ContextUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_session: dict = Depends(get_current_session)
+):
+    """
+    Update a Context.
+    Supports creating/switching protocols and other metadata updates.
+    """
+    # Get existing context
+    stmt = select(Context).where(Context.context_id == context_id)
+    result = await db.execute(stmt)
+    context = result.scalar_one_or_none()
+    
+    if not context:
+        raise HTTPException(status_code=404, detail="Context not found")
+    
+    try:
+        # Update fields if provided
+        if update_data.context_name is not None:
+            context.context_name = update_data.context_name
+            
+        if update_data.context_type is not None:
+            context.context_type = update_data.context_type
+            
+        if update_data.current_protocol_id is not None:
+            context.current_protocol_id = update_data.current_protocol_id
+            
+        if update_data.local_variables is not None:
+            context.local_variables = update_data.local_variables
+            
+        if update_data.is_active is not None:
+            context.is_active = update_data.is_active
+            
+        if update_data.master_dna_payload is not None:
+            context.master_dna_payload = update_data.master_dna_payload
+            
+        await db.commit()
+        await db.refresh(context)
+        
+        return ContextResponse(
+            context_id=context.context_id,
+            manifest_id=context.manifest_id,
+            context_name=context.context_name,
+            context_type=context.context_type,
+            inherited_intent=context.inherited_intent,
+            local_variables=context.local_variables or {},
+            boundary_wkt=None,
+            is_active=context.is_active,
+            is_master_context=context.is_master_context,
+            master_dna_payload=context.master_dna_payload or {},
+            sync_heartbeat=context.sync_heartbeat.isoformat() if context.sync_heartbeat else None,
+            created_at=context.created_at.isoformat()
+        )
+        
+    except Exception as e:
+        await db.rollback()
+        logger.error("update_context_failed", context_id=str(context_id), error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update context: {str(e)}"
+        )

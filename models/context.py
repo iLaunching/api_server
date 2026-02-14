@@ -45,6 +45,14 @@ class Context(Base):
     # Basic Metadata
     context_name = Column(String(255), nullable=False)
     context_type = Column(String(50), nullable=False, index=True) 
+
+    # Protocol Linking (Added via Migration 015)
+    current_protocol_id = Column(
+        UUID(as_uuid=True), 
+        ForeignKey("tbl_matrix_protocols.protocol_id"),
+        nullable=True,
+        index=True
+    )
     
     # Spatial Data (SRID 0 = Cartesian 2D Plane)
     boundary_polygon = Column(Geometry('POLYGON', srid=0))

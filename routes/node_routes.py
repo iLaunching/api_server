@@ -68,6 +68,12 @@ class NodeStateUpdate(BaseModel):
     is_selected: Optional[bool] = None
     is_hovered: Optional[bool] = None
 
+class NodeProtocolUpdate(BaseModel):
+    """Schema for updating node protocol"""
+    protocol_id: uuid.UUID
+    # Optional: allow overriding context_type if needed, but default to 'cell_protocol'
+    context_type: Optional[str] = 'cell_protocol'
+
 class NodeResponse(BaseModel):
     """Schema for node response"""
     node_id: uuid.UUID
@@ -425,4 +431,87 @@ async def delete_node(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete node"
+        )
+@router.patch("/{node_id}/protocol", response_model=NodeResponse)
+async def update_node_protocol(
+    node_id: uuid.UUID,
+    protocol_data: NodeProtocolUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_session: dict = Depends(get_current_session)
+):
+    """
+    Update the protocol for the context associated with this node.
+    - Looks up node by ID
+    - targeted_context_id = node.context_id
+    - Updates tbl_contexts with new protocol and type
+    """
+    # 1. Get Node
+    stmt = select(CanvasNode).where(CanvasNode.node_id == node_id)
+    result = await db.execute(stmt)
+    node = result.scalar_one_or_none()
+    
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+        
+    # 2. Get Context (to ensure it exists and maybe check permissions)
+    # The 'context_id' on the node is the Context this node BELONGS to.
+    # User instruction: "table holds the nodes context_id".
+    target_context_id = node.context_id
+    
+    stmt_ctx = select(Context).where(Context.context_id == target_context_id)
+    result_ctx = await db.execute(stmt_ctx)
+    context = result_ctx.scalar_one_or_none()
+    
+    if not context:
+        raise HTTPException(status_code=404, detail=f"Associated Context {target_context_id} not found")
+        
+    try:
+        # 3. Update Context
+        context.current_protocol_id = protocol_data.protocol_id
+        if protocol_data.context_type:
+            context.context_type = protocol_data.context_type
+            
+        # 4. Commit Linkage
+        await db.commit()
+        await db.refresh(node) # Refresh node to return
+        
+        # Optional: We might want to return the Context, but the route is under /node
+        # and typically returns NodeResponse. The Node itself hasn't changed structure,
+        # but its "environment" has.
+        
+        return NodeResponse(
+            node_id=node.node_id,
+            context_id=node.context_id,
+            node_name=node.node_name,
+            node_type=node.node_type,
+            node_description=node.node_description,
+            pos_x=node.pos_x,
+            pos_y=node.pos_y,
+            width=node.width,
+            height=node.height,
+            color=node.color,
+            background_color=node.background_color,
+            text_color=node.text_color,
+            port_config=node.port_config or {'inputs': [], 'outputs': []},
+            is_master_bridge=node.is_master_bridge,
+            bridge_inputs=node.bridge_inputs or {},
+            node_dna_overrides=node.node_dna_overrides or {},
+            operational_status=node.operational_status,
+            visual_state=node.visual_state,
+            is_selected=node.is_selected,
+            is_hovered=node.is_hovered,
+            execution_count=node.execution_count,
+            last_execution_time=node.last_execution_time,
+            error_message=node.error_message,
+            metadata=node.node_metadata or {},
+            created_at=node.created_at,
+            updated_at=node.updated_at
+        )
+
+    except Exception as e:
+        await db.rollback()
+        logger.error("update_node_protocol_failed", node_id=str(node_id), error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update node protocol: {str(e)}"
         )

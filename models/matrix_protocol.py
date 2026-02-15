@@ -52,5 +52,9 @@ class MatrixProtocol(Base):
     display_description = Column(Text)
     short_description = Column(Text)
     
+    # JSONB columns for advanced UI customization
+    ui_theme = Column(JSONB, default={})
+    ui_assets = Column(JSONB, default={})
+    
     def __repr__(self):
         return f"<MatrixProtocol(key={self.protocol_key}, active={self.is_active})>"

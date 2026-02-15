@@ -31,6 +31,8 @@ class MatrixProtocol(BaseModel):
     display_name: Optional[str] = None
     display_description: Optional[str] = None
     short_description: Optional[str] = None
+    ui_theme: dict = Field(default_factory=dict)
+    ui_assets: dict = Field(default_factory=dict)
     created_at: datetime
     updated_at: datetime
     
@@ -83,6 +85,8 @@ async def get_matrix_protocols(
                 display_name=p.display_name,
                 display_description=p.display_description,
                 short_description=p.short_description,
+                ui_theme=p.ui_theme or {},
+                ui_assets=p.ui_assets or {},
                 created_at=p.created_at,
                 updated_at=p.updated_at
             )

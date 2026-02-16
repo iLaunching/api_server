@@ -135,7 +135,7 @@ app.include_router(template_router)
 # TEMPORARILY DISABLED: Incompatible with SQLAlchemy architecture - need refactoring
 # app.include_router(node_definition_router)
 app.include_router(protocol_router, prefix="/api/v1")
-app.include_router(chat_router)
+app.include_router(chat_router, prefix="/api/v1")
 
 
 

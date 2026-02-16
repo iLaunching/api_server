@@ -215,6 +215,86 @@ async def complete_onboarding(
             matrix_id=str(matrix.id),
             master_context_id=str(master_context.context_id)
         )
+
+        # Step 2.9: Create Master Chat History (Tier C - Chat)
+        from models.chat_history import ChatHistory
+
+        master_chat = ChatHistory(
+            context_id=master_context.context_id,
+            node_id=master_node.node_id,
+            is_master_chat=True,
+            document_json={
+                "type": "doc",
+                "content": [
+                    {
+                        "type": "paragraph",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "System Initialized: Master Control Node is now online. DNA and OKRs are synchronized."
+                            }
+                        ]
+                    },
+                    {
+                        "type": "aiTurn",
+                        "attrs": {
+                            "turnId": f"turn_{int(datetime.utcnow().timestamp()*1000)}_init",
+                            "isComplete": True,
+                            "timestamp": datetime.utcnow().isoformat() + "Z",
+                            "summary": "Initial status check",
+                            "cites": []
+                        },
+                        "content": [
+                            {
+                                "type": "query",
+                                "attrs": {
+                                    "query_id": f"q_init_{uuid.uuid4().hex[:8]}",
+                                    "user_id": str(user_id),
+                                    "user_first_name": "User",
+                                    "user_avatar_type": "text",
+                                    "user_avatar_text": "U"
+                                },
+                                "content": [
+                                    {
+                                        "type": "text",
+                                        "text": "What is the current status of the Website Traffic loop?"
+                                    }
+                                ]
+                            },
+                            {
+                                "type": "response",
+                                "attrs": {
+                                    "responseId": f"res_init_{uuid.uuid4().hex[:8]}",
+                                    "isComplete": True,
+                                    "timestamp": datetime.utcnow().isoformat() + "Z"
+                                },
+                                "content": [
+                                    {
+                                        "type": "paragraph",
+                                        "content": [
+                                            {
+                                                "type": "text",
+                                                "text": "The loop is active. Current traffic is at 1.2k/hr, meeting the Master OKR of >1k/hr. I have indexed the latest logs via the MCP server."
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        )
+
+        db.add(master_chat)
+        await db.commit()
+        await db.refresh(master_chat)
+
+        logger.info(
+            "Master chat history created",
+            chat_id=str(master_chat.chat_id),
+            context_id=str(master_context.context_id)
+        )
         
         # Step 3: Update UserNavigation to set current_smart_hub_id and current_smart_matrix_id using relationships
         # Load user with profile and navigation relationships
@@ -461,6 +541,86 @@ async def create_matrix_step(
             "Matrix linked to master context",
             matrix_id=str(matrix.id),
             master_context_id=str(master_context.context_id)
+        )
+
+        # Create Master Chat History (Tier C - Chat)
+        from models.chat_history import ChatHistory
+
+        master_chat = ChatHistory(
+            context_id=master_context.context_id,
+            node_id=master_node.node_id,
+            is_master_chat=True,
+            document_json={
+                "type": "doc",
+                "content": [
+                    {
+                        "type": "paragraph",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "System Initialized: Master Control Node is now online. DNA and OKRs are synchronized."
+                            }
+                        ]
+                    },
+                    {
+                        "type": "aiTurn",
+                        "attrs": {
+                            "turnId": f"turn_{int(datetime.utcnow().timestamp()*1000)}_init",
+                            "isComplete": True,
+                            "timestamp": datetime.utcnow().isoformat() + "Z",
+                            "summary": "Initial status check",
+                            "cites": []
+                        },
+                        "content": [
+                            {
+                                "type": "query",
+                                "attrs": {
+                                    "query_id": f"q_init_{uuid.uuid4().hex[:8]}",
+                                    "user_id": str(user_id),
+                                    "user_first_name": "User",
+                                    "user_avatar_type": "text",
+                                    "user_avatar_text": "U"
+                                },
+                                "content": [
+                                    {
+                                        "type": "text",
+                                        "text": "What is the current status of the Website Traffic loop?"
+                                    }
+                                ]
+                            },
+                            {
+                                "type": "response",
+                                "attrs": {
+                                    "responseId": f"res_init_{uuid.uuid4().hex[:8]}",
+                                    "isComplete": True,
+                                    "timestamp": datetime.utcnow().isoformat() + "Z"
+                                },
+                                "content": [
+                                    {
+                                        "type": "paragraph",
+                                        "content": [
+                                            {
+                                                "type": "text",
+                                                "text": "The loop is active. Current traffic is at 1.2k/hr, meeting the Master OKR of >1k/hr. I have indexed the latest logs via the MCP server."
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        )
+
+        db.add(master_chat)
+        await db.commit()
+        await db.refresh(master_chat)
+
+        logger.info(
+            "Master chat history created",
+            chat_id=str(master_chat.chat_id),
+            context_id=str(master_context.context_id)
         )
         
         # Update hub settings

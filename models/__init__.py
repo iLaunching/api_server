@@ -16,8 +16,11 @@ from models.database_models import (
     WorkerHealth,
     OptionSet,
     OptionValue,
-    ThemeConfig,
 )
+from models.context import Context
+from models.canvas_node import CanvasNode
+from models.matrix_protocol import MatrixProtocol
+from models.chat_history import ChatHistory
 
 __all__ = [
     'UserProfile',
@@ -32,4 +35,8 @@ __all__ = [
     'WorkerHealth',
     'OptionSet',
     'OptionValue',
+    'Context',
+    'CanvasNode',
+    'MatrixProtocol',
+    'ChatHistory',
 ]

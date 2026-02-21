@@ -4,7 +4,7 @@ Models package - imports all models to ensure they're registered with SQLAlchemy
 
 # Import all models to ensure they're registered with SQLAlchemy Base.metadata
 # This is crucial for foreign key relationships to work correctly
-from models.user import UserProfile
+from models.user import UserProfile, DnaProfile
 from models.database_models import (
     SmartHub,
     SmartMatrix,
@@ -24,6 +24,7 @@ from models.chat_history import ChatHistory
 
 __all__ = [
     'UserProfile',
+    'DnaProfile',
     'ThemeConfig',
     'SmartHub',
     'SmartMatrix',

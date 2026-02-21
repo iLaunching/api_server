@@ -9,6 +9,9 @@ from typing import Optional, Dict, Any
 from sqlalchemy import Column, String, Boolean, ForeignKey, DateTime, Text, func
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
+
+# Forward reference — DnaProfile is defined in models.user
+# Imported lazily to avoid circular imports; referenced by string in relationships
 from geoalchemy2 import Geometry
 
 from config.database import Base
@@ -70,14 +73,34 @@ class Context(Base):
     is_master_context = Column(Boolean, default=False)
     master_dna_payload = Column(JSONB, default={})
     sync_heartbeat = Column(DateTime(timezone=True), server_default=func.now())
-    
+
+    # DNA Links (from migration 017)
+    # The "Soul": Global user DNA — constant across the whole account
+    global_user_dna_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("tbl_dna_profiles.dna_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    # The "Role": Local matrix-specific DNA — programmable for this context only
+    local_matrix_dna_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("tbl_dna_profiles.dna_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     
     # SQLAlchemy Relationships
     smart_matrix = relationship("SmartMatrix", foreign_keys="[Context.smart_matrix_id]", backref="contexts")
-    
+
+    # DNA relationships
+    global_dna = relationship("DnaProfile", foreign_keys=[global_user_dna_id], uselist=False)
+    local_dna = relationship("DnaProfile", foreign_keys=[local_matrix_dna_id], uselist=False)
+
     # Phase 3: Canvas Nodes relationship
     canvas_nodes = relationship("CanvasNode", back_populates="context", cascade="all, delete-orphan")
 

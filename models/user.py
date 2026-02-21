@@ -111,6 +111,9 @@ class UserProfile(Base):
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
+    
+    # One-to-one link to the global DNA profile for this user
+    global_user_dna_id = Column(UUID(as_uuid=True), ForeignKey("tbl_dna_profiles.dna_id", ondelete="SET NULL"), nullable=True, unique=True, index=True)
     phone = Column(String(20))
     avatar_url = Column(Text)
     bio = Column(Text)
@@ -148,6 +151,7 @@ class UserProfile(Base):
     
     # Relationships
     user = relationship("User", back_populates="profile")
+    dna_profile = relationship("DnaProfile", foreign_keys=[global_user_dna_id], uselist=False)
     navigation = relationship(
         "UserNavigation",
         primaryjoin="UserProfile.id == foreign(UserNavigation.user_profile_id)",
@@ -214,6 +218,30 @@ class UserProfile(Base):
             "appearance": appearance_data,
             "itheme_id": self.itheme_id,
             "itheme": itheme_data,
+        }
+
+
+class DnaProfile(Base):
+    """Universal DNA Template - maps to tbl_dna_profiles.
+    A 'Pure Vessel' where AI creates the structure, keys, and logic."""
+    __tablename__ = "tbl_dna_profiles"
+
+    dna_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    dna_payload = Column(JSONB, default={})
+    is_global_user_dna = Column(Boolean, default=False)
+    last_synthesis = Column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<DnaProfile(dna_id={self.dna_id}, is_global_user_dna={self.is_global_user_dna})>"
+
+    def to_dict(self):
+        return {
+            "dna_id": str(self.dna_id),
+            "dna_payload": self.dna_payload,
+            "is_global_user_dna": self.is_global_user_dna,
+            "last_synthesis": self.last_synthesis.isoformat() if self.last_synthesis else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
 

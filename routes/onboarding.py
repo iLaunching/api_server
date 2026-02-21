@@ -17,7 +17,7 @@ import structlog
 from config.database import get_db
 from models.database_models import SmartHub, SmartMatrix, UserNavigation
 # from models.manifest import Manifest  # Removed after refactor
-from models.user import User, UserProfile
+from models.user import User, UserProfile, DnaProfile
 from auth.middleware import get_current_session
 
 logger = structlog.get_logger()
@@ -26,6 +26,35 @@ router = APIRouter(prefix="/api/v1/onboarding", tags=["onboarding"])
 
 # Auth API URL
 AUTH_API_URL = os.getenv("AUTH_API_URL", "https://auth-server-production-b51c.up.railway.app")
+
+
+async def ensure_global_dna(db: AsyncSession, user_profile: UserProfile) -> None:
+    """Idempotently create and link a global DNA profile to the user profile."""
+    if user_profile.global_user_dna_id is not None:
+        return  # Already has a DNA profile
+
+    dna_profile = DnaProfile(
+        dna_payload={},
+        is_global_user_dna=True,
+    )
+    db.add(dna_profile)
+    await db.flush()  # Populate dna_profile.dna_id
+
+    user_profile.global_user_dna_id = dna_profile.dna_id
+    logger.info(
+        "Global DNA profile created and linked",
+        dna_id=str(dna_profile.dna_id),
+        user_profile_id=str(user_profile.id),
+    )
+
+
+async def get_user_global_dna_id(db: AsyncSession, user_id: uuid.UUID):
+    """Return the global_user_dna_id from the user's profile, or None."""
+    result = await db.execute(
+        select(UserProfile).where(UserProfile.user_id == user_id)
+    )
+    profile = result.scalar_one_or_none()
+    return profile.global_user_dna_id if profile else None
 
 
 async def update_user_onboarding_status(user_id: uuid.UUID, session_data: dict):
@@ -131,12 +160,16 @@ async def complete_onboarding(
         
         # Step 2.6: Create Master Context for the Smart Matrix (Tier B - Context Layer)
         from models.context import Context
-        
+
+        # Fetch the user's global DNA ID to link to the master context
+        global_dna_id = await get_user_global_dna_id(db, user_id)
+
         master_context = Context(
             smart_matrix_id=matrix.id,
             context_name=f"{request.matrix_name} - Master",
             context_type="GENESIS",  # Master context type
             is_master_context=True,  # Mark as master
+            global_user_dna_id=global_dna_id,
             master_dna_payload={
                 "created_via": "onboarding",
                 "hub_name": request.hub_name,
@@ -306,6 +339,8 @@ async def complete_onboarding(
         user = result.scalar_one_or_none()
         
         if user and user.profile and user.profile.navigation:
+            # Create and link a global DNA profile if not already set
+            await ensure_global_dna(db, user.profile)
             user.profile.navigation.current_smart_hub_id = hub.id
             user.profile.navigation.current_smart_matrix_id = matrix.id
             await db.commit()
@@ -392,6 +427,8 @@ async def create_hub_step(
         user = result.scalar_one_or_none()
         
         if user and user.profile and user.profile.navigation:
+            # Create and link a global DNA profile if not already set
+            await ensure_global_dna(db, user.profile)
             user.profile.navigation.current_smart_hub_id = hub.id
             await db.commit()
             logger.info("User navigation updated via relationships", user_id=str(user_id), hub_id=str(hub.id))
@@ -452,12 +489,16 @@ async def create_matrix_step(
         
         # Create Master Context for the Smart Matrix (Tier B - Context Layer)
         from models.context import Context
-        
+
+        # Fetch the user's global DNA ID to link to the master context
+        global_dna_id = await get_user_global_dna_id(db, user_id)
+
         master_context = Context(
             smart_matrix_id=matrix.id,
             context_name=f"{matrix_name} - Master",
             context_type="GENESIS",
             is_master_context=True,
+            global_user_dna_id=global_dna_id,
             master_dna_payload={
                 "created_via": "onboarding",
                 "matrix_name": matrix_name,

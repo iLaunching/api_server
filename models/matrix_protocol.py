@@ -3,8 +3,9 @@ Matrix Protocol Model
 Defines the "Start of Life" protocols for different matrix phases
 """
 
-from sqlalchemy import Column, String, Boolean, Text, DateTime
+from sqlalchemy import Column, String, Boolean, Text, DateTime, Integer, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.orm import relationship
 from datetime import datetime
 import uuid
 
@@ -40,6 +41,7 @@ class MatrixProtocol(Base):
     # METADATA
     # ============================================================================
     is_active = Column(Boolean, default=True, index=True)
+    category_id = Column(Integer, ForeignKey('tbl_protocol_categories.id'), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
     

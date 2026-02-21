@@ -64,6 +64,7 @@ class Context(Base):
     # Configuration
     local_variables = Column(JSONB, default={}, nullable=True)
     is_active = Column(Boolean, default=True)
+    setup = Column(Boolean, default=False, nullable=False)
 
     # Master Context Fields (The Soul & DNA)
     is_master_context = Column(Boolean, default=False)

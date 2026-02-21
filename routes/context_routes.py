@@ -58,6 +58,7 @@ class ContextUpdate(BaseModel):
     local_variables: Optional[Dict[str, Any]] = None
     is_active: Optional[bool] = None
     master_dna_payload: Optional[Dict[str, Any]] = None
+    setup: Optional[bool] = Field(None, description="When True, shows SetupContext in the properties panel instead of node-specific context")
 
 class ContextResponse(BaseModel):
     """Schema for context response"""
@@ -69,6 +70,7 @@ class ContextResponse(BaseModel):
     local_variables: Dict[str, Any]
     boundary_wkt: Optional[str]
     is_active: bool
+    setup: bool = False
     
     # Master Context Fields
     is_master_context: bool
@@ -158,6 +160,7 @@ async def create_context(
             local_variables=new_context.local_variables or {},
             boundary_wkt=context_data.boundary_wkt, # Simplified return
             is_active=new_context.is_active,
+            setup=new_context.setup,
             is_master_context=new_context.is_master_context,
             master_dna_payload=new_context.master_dna_payload or {},
             sync_heartbeat=new_context.sync_heartbeat.isoformat() if new_context.sync_heartbeat else None,
@@ -237,13 +240,14 @@ async def get_context(
     
     return ContextResponse(
         context_id=context.context_id,
-        manifest_id=context.manifest_id,
+        smart_matrix_id=context.smart_matrix_id,
         context_name=context.context_name,
         context_type=context.context_type,
         inherited_intent=context.inherited_intent,
         local_variables=context.local_variables or {},
         boundary_wkt=None, # Implement WKB to WKT if needed
         is_active=context.is_active,
+        setup=context.setup,
         is_master_context=context.is_master_context,
         master_dna_payload=context.master_dna_payload or {},
         sync_heartbeat=context.sync_heartbeat.isoformat() if context.sync_heartbeat else None,
@@ -268,13 +272,14 @@ async def list_manifest_contexts(
     return [
         ContextResponse(
             context_id=ctx.context_id,
-            manifest_id=ctx.manifest_id,
+            smart_matrix_id=ctx.smart_matrix_id,
             context_name=ctx.context_name,
             context_type=ctx.context_type,
             inherited_intent=ctx.inherited_intent,
             local_variables=ctx.local_variables or {},
             boundary_wkt=None,
             is_active=ctx.is_active,
+            setup=ctx.setup,
             is_master_context=ctx.is_master_context,
             master_dna_payload=ctx.master_dna_payload or {},
             sync_heartbeat=ctx.sync_heartbeat.isoformat() if ctx.sync_heartbeat else None,
@@ -317,6 +322,9 @@ async def update_context(
             
         if update_data.is_active is not None:
             context.is_active = update_data.is_active
+
+        if update_data.setup is not None:
+            context.setup = update_data.setup
             
         if update_data.master_dna_payload is not None:
             context.master_dna_payload = update_data.master_dna_payload
@@ -326,13 +334,14 @@ async def update_context(
         
         return ContextResponse(
             context_id=context.context_id,
-            manifest_id=context.manifest_id,
+            smart_matrix_id=context.smart_matrix_id,
             context_name=context.context_name,
             context_type=context.context_type,
             inherited_intent=context.inherited_intent,
             local_variables=context.local_variables or {},
             boundary_wkt=None,
             is_active=context.is_active,
+            setup=context.setup,
             is_master_context=context.is_master_context,
             master_dna_payload=context.master_dna_payload or {},
             sync_heartbeat=context.sync_heartbeat.isoformat() if context.sync_heartbeat else None,

@@ -209,6 +209,49 @@ async def create_node(
             detail="Failed to create node"
         )
 
+@router.get("/{node_id}", response_model=NodeResponse)
+async def get_node(
+    node_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_session: dict = Depends(get_current_session)
+):
+    """Get a single canvas node by its ID. Returns context_id among other fields."""
+    stmt = select(CanvasNode).where(CanvasNode.node_id == node_id)
+    result = await db.execute(stmt)
+    node = result.scalar_one_or_none()
+
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+
+    return NodeResponse(
+        node_id=node.node_id,
+        context_id=node.context_id,
+        node_name=node.node_name,
+        node_type=node.node_type,
+        node_description=node.node_description,
+        pos_x=node.pos_x,
+        pos_y=node.pos_y,
+        width=node.width,
+        height=node.height,
+        color=node.color,
+        background_color=node.background_color,
+        text_color=node.text_color,
+        port_config=node.port_config or {'inputs': [], 'outputs': []},
+        is_master_bridge=node.is_master_bridge,
+        bridge_inputs=node.bridge_inputs or {},
+        node_dna_overrides=node.node_dna_overrides or {},
+        operational_status=node.operational_status,
+        visual_state=node.visual_state,
+        is_selected=node.is_selected,
+        is_hovered=node.is_hovered,
+        execution_count=node.execution_count,
+        last_execution_time=node.last_execution_time,
+        error_message=node.error_message,
+        metadata=node.node_metadata or {},
+        created_at=node.created_at,
+        updated_at=node.updated_at
+    )
+
 @router.get("/context/{context_id}/nodes", response_model=List[NodeResponse])
 async def get_context_nodes(
     context_id: uuid.UUID,

@@ -57,6 +57,20 @@ async def get_user_global_dna_id(db: AsyncSession, user_id: uuid.UUID):
     return profile.global_user_dna_id if profile else None
 
 
+async def create_local_matrix_dna(db: AsyncSession) -> uuid.UUID:
+    """Create a fresh local/matrix-scoped DNA profile (is_global_user_dna=False by default).
+    Returns the new dna_id to assign to Context.local_matrix_dna_id.
+    """
+    local_dna = DnaProfile(
+        dna_payload={},
+        is_global_user_dna=False,  # Local/matrix-specific — the "Role"
+    )
+    db.add(local_dna)
+    await db.flush()  # Populate local_dna.dna_id
+    logger.info("Local matrix DNA profile created", dna_id=str(local_dna.dna_id))
+    return local_dna.dna_id
+
+
 async def update_user_onboarding_status(user_id: uuid.UUID, session_data: dict):
     """Update user's onboarding_completed status in auth-api"""
     try:
@@ -161,8 +175,9 @@ async def complete_onboarding(
         # Step 2.6: Create Master Context for the Smart Matrix (Tier B - Context Layer)
         from models.context import Context
 
-        # Fetch the user's global DNA ID to link to the master context
+        # Fetch DNA IDs to link to the master context
         global_dna_id = await get_user_global_dna_id(db, user_id)
+        local_dna_id = await create_local_matrix_dna(db)
 
         master_context = Context(
             smart_matrix_id=matrix.id,
@@ -170,6 +185,7 @@ async def complete_onboarding(
             context_type="GENESIS",  # Master context type
             is_master_context=True,  # Mark as master
             global_user_dna_id=global_dna_id,
+            local_matrix_dna_id=local_dna_id,
             master_dna_payload={
                 "created_via": "onboarding",
                 "hub_name": request.hub_name,
@@ -490,8 +506,9 @@ async def create_matrix_step(
         # Create Master Context for the Smart Matrix (Tier B - Context Layer)
         from models.context import Context
 
-        # Fetch the user's global DNA ID to link to the master context
+        # Fetch DNA IDs to link to the master context
         global_dna_id = await get_user_global_dna_id(db, user_id)
+        local_dna_id = await create_local_matrix_dna(db)
 
         master_context = Context(
             smart_matrix_id=matrix.id,
@@ -499,6 +516,7 @@ async def create_matrix_step(
             context_type="GENESIS",
             is_master_context=True,
             global_user_dna_id=global_dna_id,
+            local_matrix_dna_id=local_dna_id,
             master_dna_payload={
                 "created_via": "onboarding",
                 "matrix_name": matrix_name,

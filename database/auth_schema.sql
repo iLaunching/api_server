@@ -47,6 +47,8 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE TABLE IF NOT EXISTS user_profiles (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE UNIQUE,
+    synapse_number VARCHAR(20),
+    country_code VARCHAR(5),
     phone VARCHAR(20),
     avatar_url TEXT,
     bio TEXT,
@@ -111,6 +113,7 @@ CREATE INDEX IF NOT EXISTS idx_email_verification_user_id ON email_verification_
 CREATE INDEX IF NOT EXISTS idx_login_attempts_email ON login_attempts(email);
 CREATE INDEX IF NOT EXISTS idx_login_attempts_ip ON login_attempts(ip_address);
 CREATE INDEX IF NOT EXISTS idx_login_attempts_created ON login_attempts(created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_synapse_number ON user_profiles(synapse_number);
 
 -- ============================================
 -- TRIGGERS FOR UPDATED_AT

@@ -7,7 +7,7 @@ import uuid
 import httpx
 from datetime import datetime
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -19,6 +19,11 @@ from models.database_models import SmartHub, SmartMatrix, UserNavigation
 # from models.manifest import Manifest  # Removed after refactor
 from models.user import User, UserProfile, DnaProfile
 from auth.middleware import get_current_session
+from services.synthetic_phone import (
+    ensure_synthetic_onboarding_phone,
+    normalize_country_to_iso2,
+)
+from services.client_region import resolve_onboarding_country_hint
 
 logger = structlog.get_logger()
 
@@ -105,6 +110,17 @@ class OnboardingRequest(BaseModel):
     hub_color_id: int = Field(..., description="Selected color ID from smarthub_color_scheme")
     matrix_name: str = Field(..., min_length=1, description="Smart Matrix name")
     marketing_option_id: Optional[int] = Field(None, description="Selected marketing option ID")
+    country: Optional[str] = Field(
+        None,
+        description="User region for synthetic phone (e.g. UK, GB, US); maps to dial prefix (+44, +1, …)",
+    )
+    time_zone: Optional[str] = Field(
+        None,
+        description=(
+            "IANA timezone from the browser (e.g. Intl.DateTimeFormat().resolvedOptions().timeZone). "
+            "Used when country is omitted and no CDN country header is present."
+        ),
+    )
 
 
 class OnboardingResponse(BaseModel):
@@ -118,9 +134,10 @@ class OnboardingResponse(BaseModel):
 
 @router.post("/complete", response_model=OnboardingResponse)
 async def complete_onboarding(
-    request: OnboardingRequest,
+    payload: OnboardingRequest,
+    http_request: Request,
     db: AsyncSession = Depends(get_db),
-    session_data: dict = Depends(get_current_session)
+    session_data: dict = Depends(get_current_session),
 ):
     """
     Complete onboarding by creating Smart Hub and Smart Matrix.
@@ -134,18 +151,18 @@ async def complete_onboarding(
     """
     try:
         user_id = uuid.UUID(session_data.get("user_id"))
-        logger.info("Starting onboarding", user_id=str(user_id), hub_name=request.hub_name)
+        logger.info("Starting onboarding", user_id=str(user_id), hub_name=payload.hub_name)
         
         # Step 1: Create Smart Hub
         hub = await SmartHub.create(
             db=db,
             owner_id=user_id,
-            name=request.hub_name,
-            hub_color_id=request.hub_color_id,
+            name=payload.hub_name,
+            hub_color_id=payload.hub_color_id,
             is_default=True,  # First hub is always default
             order_number=0,
             settings={
-                "marketing_source_id": request.marketing_option_id,
+                "marketing_source_id": payload.marketing_option_id,
                 "onboarding_completed": True,
                 "onboarding_date": datetime.utcnow().isoformat()
             }
@@ -158,7 +175,7 @@ async def complete_onboarding(
             db=db,
             smart_hub_id=hub.id,
             owner_id=user_id,
-            name=request.matrix_name,
+            name=payload.matrix_name,
             order_number=0
         )
         
@@ -166,8 +183,8 @@ async def complete_onboarding(
         await matrix.update_business_dna(db, {
             "intent": "New business journey",
             "created_via": "onboarding",
-            "hub_name": request.hub_name,
-            "matrix_name": request.matrix_name
+            "hub_name": payload.hub_name,
+            "matrix_name": payload.matrix_name
         })
         
         logger.info("Smart matrix created", matrix_id=str(matrix.id), hub_id=str(hub.id))
@@ -181,15 +198,15 @@ async def complete_onboarding(
 
         master_context = Context(
             smart_matrix_id=matrix.id,
-            context_name=f"{request.matrix_name} - Master",
+            context_name=f"{payload.matrix_name} - Master",
             context_type="GENESIS",  # Master context type
             is_master_context=True,  # Mark as master
             global_user_dna_id=global_dna_id,
             local_matrix_dna_id=local_dna_id,
             master_dna_payload={
                 "created_via": "onboarding",
-                "hub_name": request.hub_name,
-                "matrix_name": request.matrix_name,
+                "hub_name": payload.hub_name,
+                "matrix_name": payload.matrix_name,
                 "auto_created": True
             },
             local_variables={
@@ -214,8 +231,8 @@ async def complete_onboarding(
         
         master_node = CanvasNode(
             context_id=master_context.context_id,
-            node_name=request.matrix_name,
-            node_description=f"Master Smart Matrix for {request.hub_name}",
+            node_name=payload.matrix_name,
+            node_description=f"Master Smart Matrix for {payload.hub_name}",
             node_type="smart-matrix",
             pos_x=0.0,  # Center of canvas
             pos_y=0.0,  # Center of canvas
@@ -239,8 +256,8 @@ async def complete_onboarding(
             node_metadata={
                 "created_via": "onboarding",
                 "is_original_matrix": True,
-                "hub_name": request.hub_name,
-                "matrix_name": request.matrix_name
+                "hub_name": payload.hub_name,
+                "matrix_name": payload.matrix_name
             }
         )
         
@@ -353,16 +370,34 @@ async def complete_onboarding(
             .where(User.id == user_id)
         )
         user = result.scalar_one_or_none()
-        
-        if user and user.profile and user.profile.navigation:
-            # Create and link a global DNA profile if not already set
+
+        if user and user.profile:
+            try:
+                country_hint = resolve_onboarding_country_hint(
+                    explicit=payload.country,
+                    time_zone=payload.time_zone,
+                    http_request=http_request,
+                )
+                await ensure_synthetic_onboarding_phone(db, user.profile, country_hint)
+            except RuntimeError as e:
+                logger.error("synthetic_phone_allocation_failed", error=str(e), user_id=str(user_id))
+                raise HTTPException(
+                    status_code=500,
+                    detail="Could not allocate a unique synthetic phone number",
+                ) from e
             await ensure_global_dna(db, user.profile)
-            user.profile.navigation.current_smart_hub_id = hub.id
-            user.profile.navigation.current_smart_matrix_id = matrix.id
+            if user.profile.navigation:
+                user.profile.navigation.current_smart_hub_id = hub.id
+                user.profile.navigation.current_smart_matrix_id = matrix.id
             await db.commit()
-            logger.info("User navigation updated via relationships", user_id=str(user_id), hub_id=str(hub.id), matrix_id=str(matrix.id))
+            logger.info(
+                "User profile and navigation updated after onboarding",
+                user_id=str(user_id),
+                hub_id=str(hub.id),
+                matrix_id=str(matrix.id),
+            )
         else:
-            logger.warning("User, profile, or navigation not found", user_id=str(user_id))
+            logger.warning("User or profile not found after onboarding", user_id=str(user_id))
         
         return OnboardingResponse(
             success=True,
@@ -382,12 +417,15 @@ async def complete_onboarding(
 
 @router.post("/create-hub", response_model=OnboardingResponse)
 async def create_hub_step(
+    http_request: Request,
     hub_name: str,
     hub_color_id: int,
     journey: Optional[str] = "Validate Journey",
     use_case_id: Optional[int] = None,
+    country: Optional[str] = None,
+    time_zone: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    session_data: dict = Depends(get_current_session)
+    session_data: dict = Depends(get_current_session),
 ):
     """
     Step 1: Create Smart Hub only.
@@ -445,6 +483,13 @@ async def create_hub_step(
         if user and user.profile and user.profile.navigation:
             # Create and link a global DNA profile if not already set
             await ensure_global_dna(db, user.profile)
+            resolved = resolve_onboarding_country_hint(
+                explicit=country,
+                time_zone=time_zone,
+                http_request=http_request,
+            )
+            if resolved:
+                user.profile.country_code = normalize_country_to_iso2(resolved)
             user.profile.navigation.current_smart_hub_id = hub.id
             await db.commit()
             logger.info("User navigation updated via relationships", user_id=str(user_id), hub_id=str(hub.id))
@@ -466,11 +511,14 @@ async def create_hub_step(
 
 @router.post("/create-matrix", response_model=OnboardingResponse)
 async def create_matrix_step(
+    http_request: Request,
     hub_id: str,
     matrix_name: str,
     marketing_option_id: Optional[int] = None,
+    country: Optional[str] = None,
+    time_zone: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    session_data: dict = Depends(get_current_session)
+    session_data: dict = Depends(get_current_session),
 ):
     """
     Step 2: Create Smart Matrix for the hub.
@@ -697,9 +745,23 @@ async def create_matrix_step(
             .where(User.id == user_id)
         )
         user = result.scalar_one_or_none()
-        
-        if user and user.profile and user.profile.navigation:
-            user.profile.navigation.current_smart_matrix_id = matrix.id
+
+        if user and user.profile:
+            try:
+                country_hint = resolve_onboarding_country_hint(
+                    explicit=country,
+                    time_zone=time_zone,
+                    http_request=http_request,
+                )
+                await ensure_synthetic_onboarding_phone(db, user.profile, country_hint)
+            except RuntimeError as e:
+                logger.error("synthetic_phone_allocation_failed", error=str(e), user_id=str(user_id))
+                raise HTTPException(
+                    status_code=500,
+                    detail="Could not allocate a unique synthetic phone number",
+                ) from e
+            if user.profile.navigation:
+                user.profile.navigation.current_smart_matrix_id = matrix.id
             await db.commit()
             logger.info("User navigation updated with matrix", user_id=str(user_id), matrix_id=str(matrix.id))
         

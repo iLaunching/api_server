@@ -105,6 +105,15 @@ async def _phone_exists(db: AsyncSession, phone: str) -> bool:
     return (q.scalar() or 0) > 0
 
 
+async def _synapse_exists(db: AsyncSession, synapse_number: str) -> bool:
+    q = await db.execute(
+        select(func.count())
+        .select_from(UserProfile)
+        .where(UserProfile.synapse_number == synapse_number)
+    )
+    return (q.scalar() or 0) > 0
+
+
 async def ensure_synthetic_onboarding_phone(
     db: AsyncSession,
     profile: UserProfile,
@@ -113,7 +122,9 @@ async def ensure_synthetic_onboarding_phone(
     max_attempts: int = 25,
 ) -> Optional[str]:
     """
-    If profile.phone is empty, assign +<country><10 random digits>, set country_code (ISO2).
+    If profile.phone is empty, assign +<country><10 random digits>, set country_code (ISO2),
+    and set synapse_number (digits-only: country calling code + same 10-digit suffix).
+
     Returns the new phone string, or None if phone was already set (idempotent).
     """
     if profile.phone and str(profile.phone).strip():
@@ -122,15 +133,23 @@ async def ensure_synthetic_onboarding_phone(
     raw_hint = country_hint if (country_hint and str(country_hint).strip()) else profile.country_code
     iso2 = normalize_country_to_iso2(raw_hint)
     prefix = dial_prefix_for_iso2(iso2)
+    cc_digits = prefix.lstrip("+")
 
     for _ in range(max_attempts):
-        candidate = f"{prefix}{_random_ten_digit_suffix()}"
+        suffix = _random_ten_digit_suffix()
+        candidate = f"{prefix}{suffix}"
         if len(candidate) > 20:
             raise RuntimeError(f"Synthetic phone exceeds VARCHAR(20): prefix={prefix!r}")
+        synapse_candidate = f"{cc_digits}{suffix}"
+        if len(synapse_candidate) > 20:
+            continue
         if await _phone_exists(db, candidate):
+            continue
+        if await _synapse_exists(db, synapse_candidate):
             continue
         profile.phone = candidate
         profile.country_code = iso2
+        profile.synapse_number = synapse_candidate
         return candidate
 
     raise RuntimeError(

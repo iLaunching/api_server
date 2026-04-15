@@ -19,6 +19,10 @@ from models.database_models import SmartHub, SmartMatrix, UserNavigation
 # from models.manifest import Manifest  # Removed after refactor
 from models.user import User, UserProfile, DnaProfile
 from auth.middleware import get_current_session
+from services.synthetic_phone import (
+    ensure_synthetic_onboarding_phone,
+    normalize_country_to_iso2,
+)
 
 logger = structlog.get_logger()
 
@@ -105,6 +109,10 @@ class OnboardingRequest(BaseModel):
     hub_color_id: int = Field(..., description="Selected color ID from smarthub_color_scheme")
     matrix_name: str = Field(..., min_length=1, description="Smart Matrix name")
     marketing_option_id: Optional[int] = Field(None, description="Selected marketing option ID")
+    country: Optional[str] = Field(
+        None,
+        description="User region for synthetic phone (e.g. UK, GB, US); maps to dial prefix (+44, +1, …)",
+    )
 
 
 class OnboardingResponse(BaseModel):
@@ -353,16 +361,29 @@ async def complete_onboarding(
             .where(User.id == user_id)
         )
         user = result.scalar_one_or_none()
-        
-        if user and user.profile and user.profile.navigation:
-            # Create and link a global DNA profile if not already set
+
+        if user and user.profile:
+            try:
+                await ensure_synthetic_onboarding_phone(db, user.profile, request.country)
+            except RuntimeError as e:
+                logger.error("synthetic_phone_allocation_failed", error=str(e), user_id=str(user_id))
+                raise HTTPException(
+                    status_code=500,
+                    detail="Could not allocate a unique synthetic phone number",
+                ) from e
             await ensure_global_dna(db, user.profile)
-            user.profile.navigation.current_smart_hub_id = hub.id
-            user.profile.navigation.current_smart_matrix_id = matrix.id
+            if user.profile.navigation:
+                user.profile.navigation.current_smart_hub_id = hub.id
+                user.profile.navigation.current_smart_matrix_id = matrix.id
             await db.commit()
-            logger.info("User navigation updated via relationships", user_id=str(user_id), hub_id=str(hub.id), matrix_id=str(matrix.id))
+            logger.info(
+                "User profile and navigation updated after onboarding",
+                user_id=str(user_id),
+                hub_id=str(hub.id),
+                matrix_id=str(matrix.id),
+            )
         else:
-            logger.warning("User, profile, or navigation not found", user_id=str(user_id))
+            logger.warning("User or profile not found after onboarding", user_id=str(user_id))
         
         return OnboardingResponse(
             success=True,
@@ -386,6 +407,7 @@ async def create_hub_step(
     hub_color_id: int,
     journey: Optional[str] = "Validate Journey",
     use_case_id: Optional[int] = None,
+    country: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     session_data: dict = Depends(get_current_session)
 ):
@@ -445,6 +467,8 @@ async def create_hub_step(
         if user and user.profile and user.profile.navigation:
             # Create and link a global DNA profile if not already set
             await ensure_global_dna(db, user.profile)
+            if country and str(country).strip():
+                user.profile.country_code = normalize_country_to_iso2(country)
             user.profile.navigation.current_smart_hub_id = hub.id
             await db.commit()
             logger.info("User navigation updated via relationships", user_id=str(user_id), hub_id=str(hub.id))
@@ -469,6 +493,7 @@ async def create_matrix_step(
     hub_id: str,
     matrix_name: str,
     marketing_option_id: Optional[int] = None,
+    country: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     session_data: dict = Depends(get_current_session)
 ):
@@ -697,9 +722,18 @@ async def create_matrix_step(
             .where(User.id == user_id)
         )
         user = result.scalar_one_or_none()
-        
-        if user and user.profile and user.profile.navigation:
-            user.profile.navigation.current_smart_matrix_id = matrix.id
+
+        if user and user.profile:
+            try:
+                await ensure_synthetic_onboarding_phone(db, user.profile, country)
+            except RuntimeError as e:
+                logger.error("synthetic_phone_allocation_failed", error=str(e), user_id=str(user_id))
+                raise HTTPException(
+                    status_code=500,
+                    detail="Could not allocate a unique synthetic phone number",
+                ) from e
+            if user.profile.navigation:
+                user.profile.navigation.current_smart_matrix_id = matrix.id
             await db.commit()
             logger.info("User navigation updated with matrix", user_id=str(user_id), matrix_id=str(matrix.id))
         

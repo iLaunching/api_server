@@ -26,6 +26,7 @@ MIGRATIONS = [
     "create_icon_metadata_table.sql",
     "001_create_manifest.sql",  # Manifest table
     "002_add_manifest_id_to_smart_matrices.sql",  # Bidirectional relationship
+    "033_add_synapse_number_to_user_profiles.sql",
 ]
 
 async def run_all_migrations():

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import ipaddress
 import os
+import re
 from typing import Optional
 
 from fastapi import Request
@@ -177,6 +178,40 @@ def infer_country_iso2_from_request(request: Request) -> Optional[str]:
     return None
 
 
+_ACCEPT_LANGUAGE_REGION_RE = re.compile(r"^[A-Za-z]{2,8}(?:-[A-Za-z]{4})?-(?P<region>[A-Za-z]{2}|\d{3})$")
+
+
+def iso2_from_accept_language(accept_language: Optional[str]) -> Optional[str]:
+    """
+    Extract ISO2 region from Accept-Language (best-effort).
+
+    Examples:
+    - "en-GB,en;q=0.9" -> "GB"
+    - "fr-FR" -> "FR"
+    - "en" -> None (no region)
+    """
+    if not accept_language or not str(accept_language).strip():
+        return None
+
+    raw = str(accept_language)
+    # Try each language-range in order of appearance (client preference)
+    for part in raw.split(","):
+        token = part.split(";")[0].strip()
+        if not token or token == "*":
+            continue
+        m = _ACCEPT_LANGUAGE_REGION_RE.match(token)
+        if not m:
+            continue
+        region = m.group("region")
+        # Ignore UN M.49 numeric regions (e.g. 001) for our ISO2 use-case.
+        if region.isdigit():
+            continue
+        if len(region) == 2 and region.isalpha():
+            return region.upper()
+
+    return None
+
+
 def _first_public_ip_from_headers(request: Request) -> Optional[str]:
     """
     Best-effort client IP extraction when behind proxies (Railway, etc).
@@ -289,6 +324,11 @@ def resolve_onboarding_country_hint(
         from_geoip = _geoip_country_from_ip(ip)
         if from_geoip:
             return from_geoip
+
+    # Lightweight hint: browser locale often shows region even when timezone is ambiguous (e.g. UTC).
+    from_lang = iso2_from_accept_language(http_request.headers.get("Accept-Language"))
+    if from_lang:
+        return from_lang
 
     if time_zone and str(time_zone).strip():
         iso2 = iso2_from_iana_timezone(time_zone.strip())

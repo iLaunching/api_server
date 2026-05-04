@@ -20,16 +20,33 @@ async def seed_onboarding_marketing():
         print("Starting onboarding marketing options seed...")
         
         # 1. Create or update the option_set
-        option_set_id = await conn.fetchval("""
-            INSERT INTO option_sets (name, description, created_at)
-            VALUES ($1, $2, NOW())
-            ON CONFLICT (name) 
-            DO UPDATE SET description = EXCLUDED.description
-            RETURNING id
-        """, 
-        'onboarding_marketing_options',
-        'Marketing source options for onboarding flow - where users heard about iLaunching'
+        # NOTE: Some deployments may not have a UNIQUE constraint on option_sets.name,
+        # so we avoid ON CONFLICT and do a safe select/insert/update sequence instead.
+        option_set_name = 'onboarding_marketing_options'
+        option_set_description = (
+            'Marketing source options for onboarding flow - where users heard about iLaunching'
         )
+
+        option_set_id = await conn.fetchval(
+            "SELECT id FROM option_sets WHERE name = $1 LIMIT 1",
+            option_set_name,
+        )
+        if option_set_id:
+            await conn.execute(
+                "UPDATE option_sets SET description = $1 WHERE id = $2",
+                option_set_description,
+                option_set_id,
+            )
+        else:
+            option_set_id = await conn.fetchval(
+                """
+                INSERT INTO option_sets (name, description, created_at)
+                VALUES ($1, $2, NOW())
+                RETURNING id
+                """,
+                option_set_name,
+                option_set_description,
+            )
         
         print(f"✓ Option set created/updated with ID: {option_set_id}")
         

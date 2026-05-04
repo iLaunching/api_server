@@ -11,9 +11,17 @@ For legal/billing address, always prefer an explicit country picker; this module
 
 from __future__ import annotations
 
+import ipaddress
+import os
 from typing import Optional
 
 from fastapi import Request
+
+# Optional dependency: enabled when `maxminddb` is installed + MMDB path configured.
+try:
+    import maxminddb  # type: ignore
+except Exception:  # pragma: no cover
+    maxminddb = None
 
 # IANA tz database id → ISO2 (primary country for that zone). Curated; unknown → None.
 _IANA_TZ_TO_ISO2: dict[str, str] = {
@@ -169,6 +177,94 @@ def infer_country_iso2_from_request(request: Request) -> Optional[str]:
     return None
 
 
+def _first_public_ip_from_headers(request: Request) -> Optional[str]:
+    """
+    Best-effort client IP extraction when behind proxies (Railway, etc).
+
+    We prefer the first *public* IP in X-Forwarded-For. If none, fall back to X-Real-IP,
+    then request.client.host.
+    """
+    # X-Forwarded-For: "client, proxy1, proxy2"
+    xff = request.headers.get("X-Forwarded-For")
+    if xff:
+        for raw in xff.split(","):
+            ip = raw.strip()
+            if not ip:
+                continue
+            try:
+                addr = ipaddress.ip_address(ip)
+            except ValueError:
+                continue
+            if addr.is_global:
+                return ip
+
+    xri = request.headers.get("X-Real-IP")
+    if xri:
+        ip = xri.strip()
+        try:
+            addr = ipaddress.ip_address(ip)
+            if addr.is_global:
+                return ip
+        except ValueError:
+            pass
+
+    if request.client and request.client.host:
+        ip = request.client.host
+        try:
+            addr = ipaddress.ip_address(ip)
+            if addr.is_global:
+                return ip
+        except ValueError:
+            pass
+
+    return None
+
+
+_MAXMIND_READER = None
+_MAXMIND_PATH: Optional[str] = None
+
+
+def _geoip_country_from_ip(ip: str) -> Optional[str]:
+    """
+    GeoIP lookup using a local MaxMind MMDB (GeoLite2-Country).
+
+    To enable:
+    - Install `maxminddb`
+    - Set env `GEOLITE2_COUNTRY_MMDB_PATH` to the .mmdb absolute path in the container
+    """
+    global _MAXMIND_READER, _MAXMIND_PATH
+
+    if maxminddb is None:
+        return None
+
+    mmdb_path = os.getenv("GEOLITE2_COUNTRY_MMDB_PATH", "").strip()
+    if not mmdb_path:
+        return None
+
+    # (Re)load reader if path changes (e.g. hot reload / different env)
+    if _MAXMIND_READER is None or _MAXMIND_PATH != mmdb_path:
+        _MAXMIND_PATH = mmdb_path
+        _MAXMIND_READER = maxminddb.open_database(mmdb_path)
+
+    try:
+        record = _MAXMIND_READER.get(ip)  # type: ignore[union-attr]
+    except Exception:
+        return None
+
+    if not isinstance(record, dict):
+        return None
+
+    # GeoLite2-Country provides both `country` and sometimes `registered_country`
+    for key in ("country", "registered_country"):
+        node = record.get(key)
+        if isinstance(node, dict):
+            iso = node.get("iso_code")
+            if isinstance(iso, str) and len(iso) == 2 and iso.isalpha():
+                return iso.upper()
+
+    return None
+
+
 def resolve_onboarding_country_hint(
     *,
     explicit: Optional[str],
@@ -186,6 +282,13 @@ def resolve_onboarding_country_hint(
     from_edge = infer_country_iso2_from_request(http_request)
     if from_edge:
         return from_edge
+
+    # Railway-only (no CDN country header): infer from client IP via local GeoLite2 if configured.
+    ip = _first_public_ip_from_headers(http_request)
+    if ip:
+        from_geoip = _geoip_country_from_ip(ip)
+        if from_geoip:
+            return from_geoip
 
     if time_zone and str(time_zone).strip():
         iso2 = iso2_from_iana_timezone(time_zone.strip())

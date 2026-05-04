@@ -46,7 +46,12 @@ async def seed_onboarding_marketing():
             ('newspaper', 'Newspaper', 9),
             ('billboard', 'Billboard', 10),
             ('word_of_mouth', 'Word of mouth', 11),
-            ('other', 'Other', 12),
+            ('apple_app_store', 'Apple App Store', 12),
+            ('google_play_store', 'Google Play Store', 13),
+            ('samsung_galaxy_store', 'Samsung Galaxy Store', 14),
+            ('huawei_appgallery', 'Huawei AppGallery', 15),
+            ('xiaomi_getapps', 'Xiaomi GetApps', 16),
+            ('other', 'Other', 17),
         ]
         
         # 3. Insert option_values and theme_configs

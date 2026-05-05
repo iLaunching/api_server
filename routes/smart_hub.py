@@ -1110,6 +1110,75 @@ async def clear_profile_icon(
         )
 
 
+@router.patch("/profile/timezone")
+async def update_timezone(
+    timezone: str,
+    session: Dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Update user's timezone (user_profiles.timezone)
+    """
+    try:
+        user_id = session.get("user_id")
+
+        if not user_id:
+            logger.error("No user_id in session")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User ID not found in session"
+            )
+
+        tz = (timezone or "").strip()
+        if not tz:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Timezone is required"
+            )
+
+        logger.info("=== UPDATING TIMEZONE ===", user_id=user_id, timezone=tz)
+
+        update_query = text("""
+            UPDATE user_profiles
+            SET timezone = :timezone
+            WHERE user_id = :user_id
+        """)
+
+        result = await db.execute(update_query, {"timezone": tz, "user_id": user_id})
+        logger.info("Update executed", rowcount=result.rowcount)
+
+        if result.rowcount == 0:
+            logger.error("No rows updated - profile not found", user_id=user_id)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User profile not found"
+            )
+
+        await db.commit()
+
+        logger.info("=== TIMEZONE UPDATED SUCCESSFULLY ===", user_id=user_id, timezone=tz)
+
+        return {
+            "message": "Timezone updated successfully",
+            "timezone": tz,
+            "user_id": user_id
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error("=== FAILED TO UPDATE TIMEZONE ===",
+                     user_id=session.get("user_id"),
+                     timezone=timezone,
+                     error=str(e),
+                     error_type=type(e).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update timezone: {str(e)}"
+        )
+
+
 @router.patch("/smart-hub/details")
 async def update_smart_hub_details(
     request: UpdateSmartHubDetailsRequest,

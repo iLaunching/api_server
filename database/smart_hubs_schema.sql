@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS smart_hubs (
     name VARCHAR(255) NOT NULL,
     description TEXT,
     avatar TEXT,
+    contact_number VARCHAR(20),
     hub_color VARCHAR(50),
     order_number INTEGER DEFAULT 0 NOT NULL,
     is_active BOOLEAN DEFAULT true NOT NULL,
@@ -46,6 +47,7 @@ COMMENT ON COLUMN smart_hubs.owner_id IS 'User who owns/created this hub (refere
 COMMENT ON COLUMN smart_hubs.name IS 'Display name of the hub';
 COMMENT ON COLUMN smart_hubs.description IS 'Hub description/purpose';
 COMMENT ON COLUMN smart_hubs.avatar IS 'Hub avatar image URL or icon identifier';
+COMMENT ON COLUMN smart_hubs.contact_number IS 'Optional hub-level contact phone number (same sizing as user_profiles.phone)';
 COMMENT ON COLUMN smart_hubs.hub_color IS 'Hub theme color (hex code)';
 COMMENT ON COLUMN smart_hubs.order_number IS 'Display order for user hubs (ascending)';
 COMMENT ON COLUMN smart_hubs.is_active IS 'Whether hub is active or archived';

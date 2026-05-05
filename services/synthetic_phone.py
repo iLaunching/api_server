@@ -1,6 +1,6 @@
 """
 Synthetic onboarding phone numbers: region-based dial prefix + random 10-digit suffix.
-Stored on user_profiles.phone; region ISO2 on user_profiles.country_code.
+Stored on smart_hubs.contact_number; region ISO2 on user_profiles.country_code.
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ from typing import Optional
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from models.database_models import SmartHub
 from models.user import UserProfile
 
 # ISO 3166-1 alpha-2 -> E.164 country calling code (string after +)
@@ -105,6 +106,15 @@ async def _phone_exists(db: AsyncSession, phone: str) -> bool:
     return (q.scalar() or 0) > 0
 
 
+async def _hub_contact_number_exists(db: AsyncSession, contact_number: str) -> bool:
+    q = await db.execute(
+        select(func.count())
+        .select_from(SmartHub)
+        .where(SmartHub.contact_number == contact_number)
+    )
+    return (q.scalar() or 0) > 0
+
+
 async def _synapse_exists(db: AsyncSession, synapse_number: str) -> bool:
     q = await db.execute(
         select(func.count())
@@ -116,18 +126,19 @@ async def _synapse_exists(db: AsyncSession, synapse_number: str) -> bool:
 
 async def ensure_synthetic_onboarding_phone(
     db: AsyncSession,
+    hub: SmartHub,
     profile: UserProfile,
     country_hint: Optional[str] = None,
     *,
     max_attempts: int = 25,
 ) -> Optional[str]:
     """
-    If profile.phone is empty, assign +<country><10 random digits>, set country_code (ISO2),
+    If hub.contact_number is empty, assign +<country><10 random digits>, set country_code (ISO2),
     and set synapse_number (digits-only: country calling code + same 10-digit suffix).
 
     Returns the new phone string, or None if phone was already set (idempotent).
     """
-    if profile.phone and str(profile.phone).strip():
+    if hub.contact_number and str(hub.contact_number).strip():
         return None
 
     raw_hint = country_hint if (country_hint and str(country_hint).strip()) else profile.country_code
@@ -145,14 +156,16 @@ async def ensure_synthetic_onboarding_phone(
             continue
         if await _phone_exists(db, candidate):
             continue
+        if await _hub_contact_number_exists(db, candidate):
+            continue
         if await _synapse_exists(db, synapse_candidate):
             continue
-        profile.phone = candidate
+        hub.contact_number = candidate
         profile.country_code = iso2
         profile.synapse_number = synapse_candidate
         return candidate
 
     raise RuntimeError(
         f"Could not allocate unique synthetic phone after {max_attempts} attempts "
-        f"(profile_id={profile.id})"
+        f"(profile_id={profile.id}, hub_id={hub.id})"
     )

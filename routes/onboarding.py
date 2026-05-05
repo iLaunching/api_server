@@ -378,7 +378,7 @@ async def complete_onboarding(
                     time_zone=payload.time_zone,
                     http_request=http_request,
                 )
-                await ensure_synthetic_onboarding_phone(db, user.profile, country_hint)
+                await ensure_synthetic_onboarding_phone(db, hub, user.profile, country_hint)
             except RuntimeError as e:
                 logger.error("synthetic_phone_allocation_failed", error=str(e), user_id=str(user_id))
                 raise HTTPException(
@@ -753,7 +753,7 @@ async def create_matrix_step(
                     time_zone=time_zone,
                     http_request=http_request,
                 )
-                await ensure_synthetic_onboarding_phone(db, user.profile, country_hint)
+                await ensure_synthetic_onboarding_phone(db, hub, user.profile, country_hint)
             except RuntimeError as e:
                 logger.error("synthetic_phone_allocation_failed", error=str(e), user_id=str(user_id))
                 raise HTTPException(

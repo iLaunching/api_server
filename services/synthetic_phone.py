@@ -101,9 +101,7 @@ def _random_ten_digit_suffix() -> str:
 
 async def _phone_exists(db: AsyncSession, phone: str) -> bool:
     q = await db.execute(
-        select(func.count())
-        .select_from(UserProfile)
-        .where(UserProfile.phone_e164 == phone)
+        select(func.count()).select_from(UserProfile).where(UserProfile.phone == phone)
     )
     return (q.scalar() or 0) > 0
 

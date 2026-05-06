@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     synapse_number VARCHAR(20),
     country_code VARCHAR(5),
     phone VARCHAR(20),
+    phone_varified BOOLEAN DEFAULT FALSE NOT NULL,
     avatar_url TEXT,
     bio TEXT,
     timezone VARCHAR(50) DEFAULT 'UTC',

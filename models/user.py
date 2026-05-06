@@ -119,6 +119,7 @@ class UserProfile(Base):
     # One-to-one link to the global DNA profile for this user
     global_user_dna_id = Column(UUID(as_uuid=True), ForeignKey("tbl_dna_profiles.dna_id", ondelete="SET NULL"), nullable=True, unique=True, index=True)
     phone = Column(String(20))
+    phone_varified = Column(Boolean, default=False)
     avatar_url = Column(Text)
     bio = Column(Text)
     timezone = Column(String(50), default="UTC")
@@ -211,6 +212,7 @@ class UserProfile(Base):
             "synapse_number": self.synapse_number,
             "country_code": self.country_code,
             "phone": self.phone,
+            "phone_varified": self.phone_varified,
             "avatar_url": self.avatar_url,
             "bio": self.bio,
             "timezone": self.timezone,

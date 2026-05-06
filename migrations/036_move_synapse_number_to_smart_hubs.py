@@ -25,13 +25,28 @@ async def upgrade():
                     """
                     ALTER TABLE smart_hubs
                     ADD COLUMN IF NOT EXISTS synapse_number VARCHAR(20);
-
+                    """
+                )
+            )
+            await db.execute(
+                text(
+                    """
                     CREATE UNIQUE INDEX IF NOT EXISTS idx_smart_hubs_synapse_number
                     ON smart_hubs(synapse_number);
-
+                    """
+                )
+            )
+            await db.execute(
+                text(
+                    """
                     COMMENT ON COLUMN smart_hubs.synapse_number IS
                     'Unique digits-only synapse identifier for routing (moved from user_profiles)';
-
+                    """
+                )
+            )
+            await db.execute(
+                text(
+                    """
                     WITH hub_choice AS (
                       SELECT DISTINCT ON (owner_id)
                         id AS hub_id,
@@ -47,14 +62,11 @@ async def upgrade():
                       AND (h.synapse_number IS NULL OR h.synapse_number = '')
                       AND up.synapse_number IS NOT NULL
                       AND up.synapse_number <> '';
-
-                    DROP INDEX IF EXISTS idx_synapse_number;
-
-                    ALTER TABLE user_profiles
-                    DROP COLUMN IF EXISTS synapse_number;
                     """
                 )
             )
+            await db.execute(text("DROP INDEX IF EXISTS idx_synapse_number;"))
+            await db.execute(text("ALTER TABLE user_profiles DROP COLUMN IF EXISTS synapse_number;"))
 
             await db.commit()
             logger.info("✅ Migration completed successfully: 036_move_synapse_number_to_smart_hubs")
@@ -76,13 +88,28 @@ async def downgrade():
                     """
                     ALTER TABLE user_profiles
                     ADD COLUMN IF NOT EXISTS synapse_number VARCHAR(20);
-
+                    """
+                )
+            )
+            await db.execute(
+                text(
+                    """
                     CREATE UNIQUE INDEX IF NOT EXISTS idx_synapse_number
                     ON user_profiles(synapse_number);
-
+                    """
+                )
+            )
+            await db.execute(
+                text(
+                    """
                     COMMENT ON COLUMN user_profiles.synapse_number IS
                     'Unique public identifier for Ear Server and related routing';
-
+                    """
+                )
+            )
+            await db.execute(
+                text(
+                    """
                     WITH hub_choice AS (
                       SELECT DISTINCT ON (owner_id)
                         id AS hub_id,
@@ -98,14 +125,11 @@ async def downgrade():
                       AND (up.synapse_number IS NULL OR up.synapse_number = '')
                       AND h.synapse_number IS NOT NULL
                       AND h.synapse_number <> '';
-
-                    DROP INDEX IF EXISTS idx_smart_hubs_synapse_number;
-
-                    ALTER TABLE smart_hubs
-                    DROP COLUMN IF EXISTS synapse_number;
                     """
                 )
             )
+            await db.execute(text("DROP INDEX IF EXISTS idx_smart_hubs_synapse_number;"))
+            await db.execute(text("ALTER TABLE smart_hubs DROP COLUMN IF EXISTS synapse_number;"))
 
             await db.commit()
             logger.info("✅ Rollback completed successfully: 036_move_synapse_number_to_smart_hubs")

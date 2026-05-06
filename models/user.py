@@ -118,6 +118,7 @@ class UserProfile(Base):
     # One-to-one link to the global DNA profile for this user
     global_user_dna_id = Column(UUID(as_uuid=True), ForeignKey("tbl_dna_profiles.dna_id", ondelete="SET NULL"), nullable=True, unique=True, index=True)
     phone = Column(String(20))
+    e164 = Column(String(20))
     phone_varified = Column(Boolean, default=False)
     avatar_url = Column(Text)
     bio = Column(Text)
@@ -210,6 +211,7 @@ class UserProfile(Base):
             "user_id": str(self.user_id),
             "country_code": self.country_code,
             "phone": self.phone,
+            "e164": self.e164,
             "phone_varified": self.phone_varified,
             "avatar_url": self.avatar_url,
             "bio": self.bio,

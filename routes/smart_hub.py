@@ -1248,6 +1248,75 @@ async def update_country_code(
         )
 
 
+@router.patch("/profile/e164")
+async def update_e164(
+    e164: str,
+    session: Dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Update user's E.164 number (user_profiles.e164)
+    """
+    try:
+        user_id = session.get("user_id")
+
+        if not user_id:
+            logger.error("No user_id in session")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User ID not found in session"
+            )
+
+        v = (e164 or "").strip()
+        if not v:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="E.164 value is required"
+            )
+
+        logger.info("=== UPDATING E164 ===", user_id=user_id, e164=v)
+
+        update_query = text("""
+            UPDATE user_profiles
+            SET e164 = :e164
+            WHERE user_id = :user_id
+        """)
+
+        result = await db.execute(update_query, {"e164": v, "user_id": user_id})
+        logger.info("Update executed", rowcount=result.rowcount)
+
+        if result.rowcount == 0:
+            logger.error("No rows updated - profile not found", user_id=user_id)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User profile not found"
+            )
+
+        await db.commit()
+
+        logger.info("=== E164 UPDATED SUCCESSFULLY ===", user_id=user_id, e164=v)
+
+        return {
+            "message": "E.164 updated successfully",
+            "e164": v,
+            "user_id": user_id
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error("=== FAILED TO UPDATE E164 ===",
+                     user_id=session.get("user_id"),
+                     e164=e164,
+                     error=str(e),
+                     error_type=type(e).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update E.164: {str(e)}"
+        )
+
+
 @router.patch("/smart-hub/details")
 async def update_smart_hub_details(
     request: UpdateSmartHubDetailsRequest,

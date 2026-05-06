@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE UNIQUE,
     synapse_number VARCHAR(20),
     country_code VARCHAR(5),
-    phone VARCHAR(20),
+    phone_e164 VARCHAR(20),
     avatar_url TEXT,
     bio TEXT,
     timezone VARCHAR(50) DEFAULT 'UTC',

@@ -413,6 +413,7 @@ class SmartHub(Base):
     order_number = Column(Integer, default=0)  # Display order for user's hubs
     journey = Column(String(50), default="Validate Journey")  # Per-hub journey tier
     contact_number = Column(String(20))  # Optional hub-level contact phone (matches user_profiles.phone sizing)
+    synapse_number = Column(String(20), nullable=True, unique=True)  # Unique digits-only synapse id (moved from user_profiles)
     
     # Canvas grid settings
     show_grid = Column(Boolean, default=False, nullable=False)  # Display grid in SmartMatrix canvas
@@ -448,6 +449,7 @@ class SmartHub(Base):
             "description": self.description,
             "avatar": self.avatar,
             "contact_number": self.contact_number,
+            "synapse_number": self.synapse_number,
             "hub_color_id": self.hub_color_id,
             "smartHub_icon_id": self.smartHub_icon_id,
             "avatar_display_option_value_id": self.avatar_display_option_value_id,

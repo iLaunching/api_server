@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE UNIQUE,
     country_code VARCHAR(5),
     phone VARCHAR(20),
+    e164 VARCHAR(20),
     phone_varified BOOLEAN DEFAULT FALSE NOT NULL,
     avatar_url TEXT,
     bio TEXT,

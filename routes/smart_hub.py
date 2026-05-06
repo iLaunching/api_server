@@ -1179,6 +1179,75 @@ async def update_timezone(
         )
 
 
+@router.patch("/profile/country-code")
+async def update_country_code(
+    country_code: str,
+    session: Dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Update user's country code (user_profiles.country_code)
+    """
+    try:
+        user_id = session.get("user_id")
+
+        if not user_id:
+            logger.error("No user_id in session")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User ID not found in session"
+            )
+
+        cc = (country_code or "").strip().upper()
+        if not cc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Country code is required"
+            )
+
+        logger.info("=== UPDATING COUNTRY CODE ===", user_id=user_id, country_code=cc)
+
+        update_query = text("""
+            UPDATE user_profiles
+            SET country_code = :country_code
+            WHERE user_id = :user_id
+        """)
+
+        result = await db.execute(update_query, {"country_code": cc, "user_id": user_id})
+        logger.info("Update executed", rowcount=result.rowcount)
+
+        if result.rowcount == 0:
+            logger.error("No rows updated - profile not found", user_id=user_id)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User profile not found"
+            )
+
+        await db.commit()
+
+        logger.info("=== COUNTRY CODE UPDATED SUCCESSFULLY ===", user_id=user_id, country_code=cc)
+
+        return {
+            "message": "Country code updated successfully",
+            "country_code": cc,
+            "user_id": user_id
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error("=== FAILED TO UPDATE COUNTRY CODE ===",
+                     user_id=session.get("user_id"),
+                     country_code=country_code,
+                     error=str(e),
+                     error_type=type(e).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update country code: {str(e)}"
+        )
+
+
 @router.patch("/smart-hub/details")
 async def update_smart_hub_details(
     request: UpdateSmartHubDetailsRequest,

@@ -27,6 +27,7 @@ MIGRATIONS = [
     "001_create_manifest.sql",  # Manifest table
     "002_add_manifest_id_to_smart_matrices.sql",  # Bidirectional relationship
     "033_add_synapse_number_to_user_profiles.sql",
+    "036_move_synapse_number_to_smart_hubs.sql",
 ]
 
 async def run_all_migrations():

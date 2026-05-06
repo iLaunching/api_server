@@ -118,8 +118,8 @@ async def _hub_contact_number_exists(db: AsyncSession, contact_number: str) -> b
 async def _synapse_exists(db: AsyncSession, synapse_number: str) -> bool:
     q = await db.execute(
         select(func.count())
-        .select_from(UserProfile)
-        .where(UserProfile.synapse_number == synapse_number)
+        .select_from(SmartHub)
+        .where(SmartHub.synapse_number == synapse_number)
     )
     return (q.scalar() or 0) > 0
 
@@ -161,8 +161,8 @@ async def ensure_synthetic_onboarding_phone(
         if await _synapse_exists(db, synapse_candidate):
             continue
         hub.contact_number = candidate
+        hub.synapse_number = synapse_candidate
         profile.country_code = iso2
-        profile.synapse_number = synapse_candidate
         return candidate
 
     raise RuntimeError(

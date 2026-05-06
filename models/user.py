@@ -113,7 +113,6 @@ class UserProfile(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
 
     # Ear Server / routing: unique public synapse id and region
-    synapse_number = Column(String(20), nullable=True, unique=True)
     country_code = Column(String(5), nullable=True)
     
     # One-to-one link to the global DNA profile for this user
@@ -209,7 +208,6 @@ class UserProfile(Base):
         return {
             "id": str(self.id),
             "user_id": str(self.user_id),
-            "synapse_number": self.synapse_number,
             "country_code": self.country_code,
             "phone": self.phone,
             "phone_varified": self.phone_varified,

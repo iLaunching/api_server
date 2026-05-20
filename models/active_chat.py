@@ -1,11 +1,11 @@
 """
-Active Chat per smart hub theme/avatar configuration.
-Linked from smart_hubs."activeChat"; column defaults mirror user_profiles (6, 10, 24).
+Active Chat per smart hub theme configuration (appearance + itheme).
+Avatar/display fields live on user_profiles only. Linked from smart_hubs."activeChat".
 """
 
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, Text
+from sqlalchemy import Column, DateTime, ForeignKey, Integer
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -36,21 +36,6 @@ class ActiveChat(Base):
         index=True,
         default=10,
     )
-    avatar_display_option_id = Column(Integer, nullable=True, index=True, default=24)
-    profile_icon_id = Column(
-        Integer,
-        ForeignKey("option_values.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
-    avatar_color_id = Column(
-        Integer,
-        ForeignKey("option_values.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
-    avatar_icon = Column(Text)
-    avatar_image = Column(Text)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(
         DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
@@ -58,8 +43,6 @@ class ActiveChat(Base):
 
     appearance = relationship("OptionValue", foreign_keys=[appearance_option_id])
     itheme = relationship("OptionValue", foreign_keys=[itheme_option_id])
-    profile_icon = relationship("OptionValue", foreign_keys=[profile_icon_id])
-    avatar_color = relationship("OptionValue", foreign_keys=[avatar_color_id])
     smart_hubs = relationship(
         "SmartHub",
         foreign_keys="SmartHub.activeChat",
@@ -91,11 +74,6 @@ class ActiveChat(Base):
             "appearance": appearance_data,
             "itheme_option_id": self.itheme_option_id,
             "itheme": itheme_data,
-            "avatar_display_option_id": self.avatar_display_option_id,
-            "profile_icon_id": self.profile_icon_id,
-            "avatar_color_id": self.avatar_color_id,
-            "avatar_icon": self.avatar_icon,
-            "avatar_image": self.avatar_image,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

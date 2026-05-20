@@ -33,6 +33,7 @@ MIGRATIONS = [
     "040_create_active_chat_table.sql",
     "041_add_active_chat_to_smart_hubs.sql",
     "042_active_chat_per_smart_hub.sql",
+    "043_drop_active_chat_avatar_columns.sql",
 ]
 
 async def run_all_migrations():

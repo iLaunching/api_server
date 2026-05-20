@@ -21,7 +21,7 @@ BEGIN
         ALTER TABLE "activeChat" DROP CONSTRAINT IF EXISTS "activeChat_user_id_key";
 
         COMMENT ON TABLE "activeChat" IS
-            'Per smart hub Active Chat appearance and avatar settings (linked from smart_hubs.activeChat)';
+            'Per smart hub Active Chat theme (appearance + itheme; linked from smart_hubs.activeChat)';
     END IF;
 
     IF EXISTS (
@@ -31,7 +31,7 @@ BEGIN
           AND column_name = 'activeChat'
     ) THEN
         COMMENT ON COLUMN smart_hubs."activeChat" IS
-            'FK to activeChat.id (this hub''s Active Chat theme/avatar config)';
+            'FK to activeChat.id (this hub''s Active Chat theme config)';
     END IF;
 END $$;
 """

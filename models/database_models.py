@@ -416,7 +416,7 @@ class SmartHub(Base):
         ForeignKey("activeChat.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
-    )  # FK to this hub's Active Chat config
+    )  # FK to this hub's Active Chat theme (appearance + itheme)
     order_number = Column(Integer, default=0)  # Display order for user's hubs
     journey = Column(String(50), default="Validate Journey")  # Per-hub journey tier
     contact_number = Column(String(20))  # Optional hub-level contact phone (matches user_profiles.phone sizing)

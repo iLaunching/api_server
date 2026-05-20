@@ -1,8 +1,8 @@
 """
 Create and link one activeChat row per smart hub (smart_hubs."activeChat" FK).
 
-New rows use the same SQLAlchemy column defaults as UserProfile(user_id=...) at signup
-(appearance 6, itheme 10, avatar display 24; icon/color left null) — no profile fetch.
+New rows use appearance/itheme column defaults (6, 10) like UserProfile at signup.
+Avatar/display fields are read from user_profiles only.
 """
 
 from __future__ import annotations

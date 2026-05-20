@@ -8,7 +8,11 @@ import asyncpg
 import os
 from pathlib import Path
 
-DATABASE_URL = "postgresql://postgres:TVzCDcmIDhjbquUUbrUMQExHEfXIwiNm@tramway.proxy.rlwy.net:12050/railway"
+# Production shared DB (auth + api). Override with DATABASE_URL env. Legacy tramway host is not production.
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://postgres:5B46Gg4BGCC5fcA2geGaddd6Bf42CaDC@turntable.proxy.rlwy.net:23759/railway",
+)
 
 # List of migrations in order (add new ones to the end)
 MIGRATIONS = [

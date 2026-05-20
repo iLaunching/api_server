@@ -14,10 +14,7 @@ logger = structlog.get_logger()
 _UPGRADE_SQL = """
 DO $$
 BEGIN
-    IF EXISTS (
-        SELECT 1 FROM information_schema.tables
-        WHERE table_schema = 'public' AND table_name = 'activeChat'
-    ) THEN
+    IF to_regclass('public."activeChat"') IS NOT NULL THEN
         DROP INDEX IF EXISTS idx_active_chat_avatar_display_option_id;
         DROP INDEX IF EXISTS idx_active_chat_profile_icon_id;
         DROP INDEX IF EXISTS idx_active_chat_avatar_color_id;

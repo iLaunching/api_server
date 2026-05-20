@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     country_code VARCHAR(5),
     phone VARCHAR(20),
     e164 VARCHAR(20),
+    phone_identity_id UUID,
     phone_varified BOOLEAN DEFAULT FALSE NOT NULL,
     avatar_url TEXT,
     bio TEXT,
@@ -57,6 +58,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     language VARCHAR(10) DEFAULT 'en',
     preferences JSONB DEFAULT '{}',
     onboarding_completed BOOLEAN DEFAULT FALSE,
+    "activeChat_onBoarding_complete" BOOLEAN DEFAULT FALSE NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

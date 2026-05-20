@@ -24,6 +24,7 @@ from services.synthetic_phone import (
     normalize_country_to_iso2,
 )
 from services.client_region import resolve_onboarding_country_hint
+from services.active_chat import ensure_active_chat_for_hub
 
 logger = structlog.get_logger()
 
@@ -386,6 +387,7 @@ async def complete_onboarding(
                     detail="Could not allocate a unique synthetic phone number",
                 ) from e
             await ensure_global_dna(db, user.profile)
+            await ensure_active_chat_for_hub(db, user_id, hub)
             if user.profile.navigation:
                 user.profile.navigation.current_smart_hub_id = hub.id
                 user.profile.navigation.current_smart_matrix_id = matrix.id
@@ -398,6 +400,7 @@ async def complete_onboarding(
             )
         else:
             logger.warning("User or profile not found after onboarding", user_id=str(user_id))
+            await ensure_active_chat_for_hub(db, user_id, hub)
         
         return OnboardingResponse(
             success=True,
@@ -471,15 +474,16 @@ async def create_hub_step(
             order_number=next_order,
             settings={"onboarding_in_progress": True}
         )
-        
-        # Update UserNavigation to set current_smart_hub_id using relationships
+
         result = await db.execute(
             select(User)
             .options(selectinload(User.profile).selectinload(UserProfile.navigation))
             .where(User.id == user_id)
         )
         user = result.scalar_one_or_none()
+        await ensure_active_chat_for_hub(db, user_id, hub)
         
+        # Update UserNavigation to set current_smart_hub_id using relationships
         if user and user.profile and user.profile.navigation:
             # Create and link a global DNA profile if not already set
             await ensure_global_dna(db, user.profile)
@@ -531,6 +535,8 @@ async def create_matrix_step(
         hub = await SmartHub.get_by_id(db, hub_uuid)
         if not hub or hub.owner_id != user_id:
             raise HTTPException(status_code=404, detail="Smart Hub not found")
+
+        await ensure_active_chat_for_hub(db, user_id, hub)
         
         # Create matrix
         matrix = await SmartMatrix.create(

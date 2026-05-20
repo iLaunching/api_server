@@ -28,6 +28,11 @@ MIGRATIONS = [
     "002_add_manifest_id_to_smart_matrices.sql",  # Bidirectional relationship
     "033_add_synapse_number_to_user_profiles.sql",
     "036_move_synapse_number_to_smart_hubs.sql",
+    "038_add_phone_identity_id_to_user_profiles.sql",
+    "039_add_active_chat_onboarding_complete_to_user_profiles.sql",
+    "040_create_active_chat_table.sql",
+    "041_add_active_chat_to_smart_hubs.sql",
+    "042_active_chat_per_smart_hub.sql",
 ]
 
 async def run_all_migrations():

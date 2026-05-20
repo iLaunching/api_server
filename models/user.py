@@ -119,6 +119,13 @@ class UserProfile(Base):
     global_user_dna_id = Column(UUID(as_uuid=True), ForeignKey("tbl_dna_profiles.dna_id", ondelete="SET NULL"), nullable=True, unique=True, index=True)
     phone = Column(String(20))
     e164 = Column(String(20))
+    # Optional 1:1 link to phone_identities (verified phone binding)
+    phone_identity_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("phone_identities.id", ondelete="SET NULL"),
+        nullable=True,
+        unique=True,
+    )
     phone_varified = Column(Boolean, default=False)
     avatar_url = Column(Text)
     bio = Column(Text)
@@ -126,7 +133,14 @@ class UserProfile(Base):
     language = Column(String(10), default="en")
     preferences = Column(JSONB, default={})
     onboarding_completed = Column(Boolean, default=False)
-    
+    activeChat_onBoarding_complete = Column(
+        "activeChat_onBoarding_complete",
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
+
     # Account type (foreign key to option_values)
     account_type_id = Column(Integer, ForeignKey("option_values.id", ondelete="SET NULL"), nullable=True, index=True)
     
@@ -169,7 +183,13 @@ class UserProfile(Base):
     avatar_color = relationship("OptionValue", foreign_keys=[avatar_color_id])
     profile_icon = relationship("OptionValue", foreign_keys=[profile_icon_id])
     login_permissions = relationship("OptionValue", foreign_keys=[login_permissions_option_value_id])
-    
+    phone_identity = relationship(
+        "PhoneIdentity",
+        foreign_keys=[phone_identity_id],
+        back_populates="user_profile",
+        uselist=False,
+    )
+
     # Smart Hubs - one-to-many relationship through user_id
     smart_hubs = relationship(
         "SmartHub",
@@ -212,6 +232,9 @@ class UserProfile(Base):
             "country_code": self.country_code,
             "phone": self.phone,
             "e164": self.e164,
+            "phone_identity_id": (
+                str(self.phone_identity_id) if self.phone_identity_id else None
+            ),
             "phone_varified": self.phone_varified,
             "avatar_url": self.avatar_url,
             "bio": self.bio,
@@ -219,6 +242,7 @@ class UserProfile(Base):
             "language": self.language,
             "preferences": self.preferences,
             "onboarding_completed": self.onboarding_completed,
+            "activeChat_onBoarding_complete": self.activeChat_onBoarding_complete,
             "user_navigation_id": str(self.user_navigation_id) if self.user_navigation_id else None,
             "account_type_id": self.account_type_id,
             "account_type": account_type_data,

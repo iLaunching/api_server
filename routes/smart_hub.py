@@ -336,8 +336,6 @@ async def get_current_smart_hub(
                 "first_name": profile.user.first_name if profile.user else "",
                 "surname": profile.user.last_name if profile.user else "",
                 "timezone": profile.timezone,
-                "country_code": profile.country_code,
-                "e164": profile.e164,
                 "language": profile.language,
                 "onboarding_completed": profile.onboarding_completed,
                 "smart_hubs": smart_hubs_list,
@@ -525,8 +523,6 @@ async def get_current_smart_matrix(
                 "user_id": str(profile.user_id),
                 "first_name": profile.user.first_name if profile.user else "",
                 "surname": profile.user.last_name if profile.user else "",
-                "country_code": profile.country_code,
-                "e164": profile.e164,
             }
         }
         
@@ -1249,70 +1245,6 @@ async def update_country_code(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update country code: {str(e)}"
-        )
-
-
-@router.patch("/profile/e164")
-async def update_e164(
-    e164: str,
-    session: Dict = Depends(get_current_session),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Update user's phone number in E.164 format (user_profiles.e164).
-    """
-    try:
-        user_id = session.get("user_id")
-
-        if not user_id:
-            logger.error("No user_id in session")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User ID not found in session"
-            )
-
-        value = (e164 or "").strip()
-
-        logger.info("=== UPDATING E164 ===", user_id=user_id, e164=value)
-
-        update_query = text("""
-            UPDATE user_profiles
-            SET e164 = :e164
-            WHERE user_id = :user_id
-        """)
-
-        result = await db.execute(update_query, {"e164": value if value else None, "user_id": user_id})
-        logger.info("Update executed", rowcount=result.rowcount)
-
-        if result.rowcount == 0:
-            logger.error("No rows updated - profile not found", user_id=user_id)
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User profile not found"
-            )
-
-        await db.commit()
-
-        logger.info("=== E164 UPDATED SUCCESSFULLY ===", user_id=user_id, e164=value)
-
-        return {
-            "message": "E164 updated successfully",
-            "e164": value,
-            "user_id": user_id
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        await db.rollback()
-        logger.error("=== FAILED TO UPDATE E164 ===",
-                     user_id=session.get("user_id"),
-                     e164=e164,
-                     error=str(e),
-                     error_type=type(e).__name__)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to update e164: {str(e)}"
         )
 
 

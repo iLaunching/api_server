@@ -410,6 +410,13 @@ class SmartHub(Base):
     smartHub_icon_id = Column('smarthub_icon_id', Integer, ForeignKey("option_values.id", ondelete="SET NULL"), nullable=True, index=True)  # FK to avatar_library option set
     avatar_display_option_value_id = Column(Integer, nullable=True, index=True, default=24)  # 24=default/initials, 25=image, 26=icon
     use_case_id = Column(Integer, ForeignKey("option_values.id", ondelete="SET NULL"), nullable=True, index=True)  # FK to smart_hub_use_case option set
+    activeChat = Column(
+        "activeChat",
+        Integer,
+        ForeignKey("activeChat.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )  # FK to this hub's Active Chat config
     order_number = Column(Integer, default=0)  # Display order for user's hubs
     journey = Column(String(50), default="Validate Journey")  # Per-hub journey tier
     contact_number = Column(String(20))  # Optional hub-level contact phone (matches user_profiles.phone sizing)
@@ -436,7 +443,8 @@ class SmartHub(Base):
     hub_color = relationship("OptionValue", foreign_keys=[hub_color_id])
     smartHub_icon = relationship("OptionValue", foreign_keys=[smartHub_icon_id])
     use_case = relationship("OptionValue", foreign_keys=[use_case_id])
-    
+    active_chat = relationship("ActiveChat", foreign_keys=[activeChat])
+
     def __repr__(self):
         return f"<SmartHub(id={self.id}, name={self.name}, owner_id={self.owner_id})>"
     
@@ -454,6 +462,7 @@ class SmartHub(Base):
             "smartHub_icon_id": self.smartHub_icon_id,
             "avatar_display_option_value_id": self.avatar_display_option_value_id,
             "use_case_id": self.use_case_id,
+            "activeChat": self.activeChat,
             "order_number": self.order_number,
             "show_grid": self.show_grid,
             "grid_style": self.grid_style,

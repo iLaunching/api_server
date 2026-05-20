@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS smart_hubs (
     avatar TEXT,
     contact_number VARCHAR(20),
     synapse_number VARCHAR(20),
+    "activeChat" INTEGER REFERENCES "activeChat"(id) ON DELETE SET NULL,
     hub_color VARCHAR(50),
     order_number INTEGER DEFAULT 0 NOT NULL,
     is_active BOOLEAN DEFAULT true NOT NULL,
@@ -50,6 +51,7 @@ COMMENT ON COLUMN smart_hubs.description IS 'Hub description/purpose';
 COMMENT ON COLUMN smart_hubs.avatar IS 'Hub avatar image URL or icon identifier';
 COMMENT ON COLUMN smart_hubs.contact_number IS 'Optional hub-level contact phone number (same sizing as user_profiles.phone)';
 COMMENT ON COLUMN smart_hubs.synapse_number IS 'Unique digits-only synapse identifier for routing (moved from user_profiles)';
+COMMENT ON COLUMN smart_hubs."activeChat" IS 'FK to activeChat.id (this hub''s Active Chat theme/avatar config)';
 COMMENT ON COLUMN smart_hubs.hub_color IS 'Hub theme color (hex code)';
 COMMENT ON COLUMN smart_hubs.order_number IS 'Display order for user hubs (ascending)';
 COMMENT ON COLUMN smart_hubs.is_active IS 'Whether hub is active or archived';

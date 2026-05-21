@@ -25,6 +25,7 @@ from services.synthetic_phone import (
 )
 from services.client_region import resolve_onboarding_country_hint
 from services.active_chat import ensure_active_chat_for_hub
+from services.user_navigation_sync import set_navigation_hub, set_navigation_matrix, set_navigation_context
 
 logger = structlog.get_logger()
 
@@ -363,7 +364,7 @@ async def complete_onboarding(
             context_id=str(master_context.context_id)
         )
         
-        # Step 3: Update UserNavigation to set current_smart_hub_id and current_smart_matrix_id using relationships
+        # Step 3: Update UserNavigation (current_* + ac_current_* hub/matrix) using relationships
         # Load user with profile and navigation relationships
         result = await db.execute(
             select(User)
@@ -389,8 +390,7 @@ async def complete_onboarding(
             await ensure_global_dna(db, user.profile)
             await ensure_active_chat_for_hub(db, user_id, hub)
             if user.profile.navigation:
-                user.profile.navigation.current_smart_hub_id = hub.id
-                user.profile.navigation.current_smart_matrix_id = matrix.id
+                set_navigation_context(user.profile.navigation, hub_id=hub.id, matrix_id=matrix.id)
             await db.commit()
             logger.info(
                 "User profile and navigation updated after onboarding",
@@ -483,7 +483,7 @@ async def create_hub_step(
         user = result.scalar_one_or_none()
         await ensure_active_chat_for_hub(db, user_id, hub)
         
-        # Update UserNavigation to set current_smart_hub_id using relationships
+        # Update UserNavigation hub pointers (current_* + ac_current_*)
         if user and user.profile and user.profile.navigation:
             # Create and link a global DNA profile if not already set
             await ensure_global_dna(db, user.profile)
@@ -494,7 +494,7 @@ async def create_hub_step(
             )
             if resolved:
                 user.profile.country_code = normalize_country_to_iso2(resolved)
-            user.profile.navigation.current_smart_hub_id = hub.id
+            set_navigation_hub(user.profile.navigation, hub.id)
             await db.commit()
             logger.info("User navigation updated via relationships", user_id=str(user_id), hub_id=str(hub.id))
         
@@ -744,7 +744,7 @@ async def create_matrix_step(
         })
         await db.commit()
         
-        # Update UserNavigation to set current_smart_matrix_id
+        # Update UserNavigation matrix pointers (current_* + ac_current_*)
         result = await db.execute(
             select(User)
             .options(selectinload(User.profile).selectinload(UserProfile.navigation))
@@ -767,7 +767,7 @@ async def create_matrix_step(
                     detail="Could not allocate a unique synthetic phone number",
                 ) from e
             if user.profile.navigation:
-                user.profile.navigation.current_smart_matrix_id = matrix.id
+                set_navigation_matrix(user.profile.navigation, matrix.id)
             await db.commit()
             logger.info("User navigation updated with matrix", user_id=str(user_id), matrix_id=str(matrix.id))
         

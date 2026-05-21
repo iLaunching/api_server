@@ -3,12 +3,15 @@
 -- One-to-one relationship with user_profile (auth-api)
 -- One-to-one relationship with current_smart_hub
 -- One-to-one relationship with current_smart_matrix
+-- Active Chat navigation context (ac_current_* mirrors current_*)
 
 CREATE TABLE IF NOT EXISTS user_navigation (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_profile_id UUID NOT NULL UNIQUE,
     current_smart_hub_id UUID UNIQUE REFERENCES smart_hubs(id) ON DELETE SET NULL,
     current_smart_matrix_id UUID UNIQUE REFERENCES smart_matrices(id) ON DELETE SET NULL,
+    ac_current_smart_hub_id UUID UNIQUE REFERENCES smart_hubs(id) ON DELETE SET NULL,
+    ac_current_smart_matrix_id UUID UNIQUE REFERENCES smart_matrices(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -17,6 +20,8 @@ CREATE TABLE IF NOT EXISTS user_navigation (
 CREATE INDEX IF NOT EXISTS idx_user_navigation_user_profile_id ON user_navigation(user_profile_id);
 CREATE INDEX IF NOT EXISTS idx_user_navigation_current_smart_hub_id ON user_navigation(current_smart_hub_id);
 CREATE INDEX IF NOT EXISTS idx_user_navigation_current_smart_matrix_id ON user_navigation(current_smart_matrix_id);
+CREATE INDEX IF NOT EXISTS idx_user_navigation_ac_current_smart_hub_id ON user_navigation(ac_current_smart_hub_id);
+CREATE INDEX IF NOT EXISTS idx_user_navigation_ac_current_smart_matrix_id ON user_navigation(ac_current_smart_matrix_id);
 
 -- Updated at trigger
 CREATE OR REPLACE FUNCTION update_user_navigation_updated_at()

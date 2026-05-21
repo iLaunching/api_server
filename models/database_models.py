@@ -643,6 +643,22 @@ class UserNavigation(Base):
     
     # One-to-one with current smart matrix
     current_smart_matrix_id = Column(UUID(as_uuid=True), ForeignKey("smart_matrices.id", ondelete="SET NULL"), nullable=True, unique=True, index=True)
+
+    # Active Chat navigation context (same config as current_* columns)
+    ac_current_smart_hub_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("smart_hubs.id", ondelete="SET NULL"),
+        nullable=True,
+        unique=True,
+        index=True,
+    )
+    ac_current_smart_matrix_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("smart_matrices.id", ondelete="SET NULL"),
+        nullable=True,
+        unique=True,
+        index=True,
+    )
     
     # Timestamps
     created_at = Column(DateTime(timezone=True), default=func.now())
@@ -651,10 +667,37 @@ class UserNavigation(Base):
     # Relationships
     current_smart_hub = relationship("SmartHub", foreign_keys=[current_smart_hub_id])
     current_smart_matrix = relationship("SmartMatrix", foreign_keys=[current_smart_matrix_id])
+    ac_current_smart_hub = relationship("SmartHub", foreign_keys=[ac_current_smart_hub_id])
+    ac_current_smart_matrix = relationship("SmartMatrix", foreign_keys=[ac_current_smart_matrix_id])
     
     def __repr__(self):
-        return f"<UserNavigation(id={self.id}, user_profile_id={self.user_profile_id}, current_smart_hub_id={self.current_smart_hub_id}, current_smart_matrix_id={self.current_smart_matrix_id})>"
+        return (
+            f"<UserNavigation(id={self.id}, user_profile_id={self.user_profile_id}, "
+            f"current_smart_hub_id={self.current_smart_hub_id}, "
+            f"current_smart_matrix_id={self.current_smart_matrix_id}, "
+            f"ac_current_smart_hub_id={self.ac_current_smart_hub_id}, "
+            f"ac_current_smart_matrix_id={self.ac_current_smart_matrix_id})>"
+        )
     
+    def set_current_smart_hub(self, hub_id: Optional[uuid.UUID]) -> None:
+        """Set current + Active Chat hub pointers together."""
+        self.current_smart_hub_id = hub_id
+        self.ac_current_smart_hub_id = hub_id
+
+    def set_current_smart_matrix(self, matrix_id: Optional[uuid.UUID]) -> None:
+        """Set current + Active Chat matrix pointers together."""
+        self.current_smart_matrix_id = matrix_id
+        self.ac_current_smart_matrix_id = matrix_id
+
+    def set_current_context(
+        self,
+        hub_id: Optional[uuid.UUID],
+        matrix_id: Optional[uuid.UUID],
+    ) -> None:
+        """Set hub and matrix pointers (current_* and ac_current_*)."""
+        self.set_current_smart_hub(hub_id)
+        self.set_current_smart_matrix(matrix_id)
+
     def to_dict(self):
         """Convert user navigation to dictionary"""
         return {
@@ -662,6 +705,12 @@ class UserNavigation(Base):
             "user_profile_id": str(self.user_profile_id),
             "current_smart_hub_id": str(self.current_smart_hub_id) if self.current_smart_hub_id else None,
             "current_smart_matrix_id": str(self.current_smart_matrix_id) if self.current_smart_matrix_id else None,
+            "ac_current_smart_hub_id": (
+                str(self.ac_current_smart_hub_id) if self.ac_current_smart_hub_id else None
+            ),
+            "ac_current_smart_matrix_id": (
+                str(self.ac_current_smart_matrix_id) if self.ac_current_smart_matrix_id else None
+            ),
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
@@ -684,12 +733,29 @@ class UserNavigation(Base):
         return result.scalar_one_or_none()
     
     @classmethod
-    async def update_current_hub(cls, db: AsyncSession, user_profile_id: uuid.UUID, current_smart_hub_id: uuid.UUID) -> Optional["UserNavigation"]:
-        """Update the current smart hub for a user."""
+    async def update_current_hub(
+        cls,
+        db: AsyncSession,
+        user_profile_id: uuid.UUID,
+        current_smart_hub_id: uuid.UUID,
+        current_smart_matrix_id: Optional[uuid.UUID] = None,
+        *,
+        update_matrix: bool = False,
+    ) -> Optional["UserNavigation"]:
+        """Update current smart hub (and ac_current hub); optionally matrix pair too."""
         navigation = await cls.get_by_user_profile_id(db, user_profile_id)
         if navigation:
-            navigation.current_smart_hub_id = current_smart_hub_id
+            navigation.set_current_smart_hub(current_smart_hub_id)
+            if update_matrix:
+                navigation.set_current_smart_matrix(current_smart_matrix_id)
             await db.commit()
             await db.refresh(navigation)
-            logger.info("User navigation updated", user_profile_id=str(user_profile_id), current_smart_hub_id=str(current_smart_hub_id))
+            logger.info(
+                "User navigation updated",
+                user_profile_id=str(user_profile_id),
+                current_smart_hub_id=str(current_smart_hub_id),
+                current_smart_matrix_id=str(current_smart_matrix_id)
+                if current_smart_matrix_id
+                else None,
+            )
         return navigation

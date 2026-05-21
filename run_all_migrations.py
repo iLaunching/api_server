@@ -38,6 +38,7 @@ MIGRATIONS = [
     "041_add_active_chat_to_smart_hubs.sql",
     "042_active_chat_per_smart_hub.sql",
     "043_drop_active_chat_avatar_columns.sql",
+    "044_add_ac_current_navigation_to_user_navigation.sql",
 ]
 
 async def run_all_migrations():

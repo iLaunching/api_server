@@ -18,6 +18,12 @@ from config.database import get_db
 from auth.middleware import get_current_session
 from models.database_models import UserNavigation, SmartHub, SmartMatrix, OptionValue, ThemeConfig
 from models.user import UserProfile
+from services.user_navigation_sync import (
+    first_matrix_id_for_hub,
+    set_navigation_context,
+    set_navigation_hub,
+    set_navigation_matrix,
+)
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -615,7 +621,7 @@ async def switch_smart_hub(
 ):
     """
     Switch to a different Smart Hub (instant context switch).
-    Updates user_navigation.current_smart_hub_id - ONE update, no search!
+    Updates user_navigation current_* and ac_current_* hub/matrix together.
     """
     try:
         user_id = session.get("user_id")
@@ -670,17 +676,16 @@ async def switch_smart_hub(
         nav_result = await db.execute(nav_query)
         navigation = nav_result.scalar_one_or_none()
         
+        hub_uuid = uuid.UUID(hub_id) if isinstance(hub_id, str) else hub_id
+        matrix_id = matrix.id if matrix else None
+
         if not navigation:
-            navigation = UserNavigation(
-                user_profile_id=profile.id,
-                current_smart_hub_id=hub_id,
-                current_smart_matrix_id=matrix.id if matrix else None
-            )
+            navigation = UserNavigation(user_profile_id=profile.id)
+            navigation.set_current_context(hub_uuid, matrix_id)
             db.add(navigation)
         else:
-            navigation.current_smart_hub_id = hub_id
-            navigation.current_smart_matrix_id = matrix.id if matrix else None
-        
+            navigation.set_current_context(hub_uuid, matrix_id)
+
         await db.commit()
         
         logger.info("Smart hub switched successfully", 
@@ -1796,7 +1801,8 @@ async def delete_smart_hub(
         # STEP 1: If hub being deleted is the current hub, switch to default hub FIRST
         if str(navigation.current_smart_hub_id) == hub_id:
             logger.info("FLOW: Step 1 - Hub being deleted IS current hub, switching to default first")
-            
+            owner_uuid = uuid.UUID(user_id)
+
             if str(default_hub.id) == hub_id:
                 # Deleting the default hub that's also current, need to find next hub
                 next_hub = next((h for h in all_hubs if str(h.id) != hub_id), None)
@@ -1805,13 +1811,21 @@ async def delete_smart_hub(
                         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                         detail="Failed to find replacement hub"
                     )
-                navigation.current_smart_hub_id = next_hub.id
-                logger.info("FLOW: Step 1 - Switched to next hub", next_hub_id=str(next_hub.id))
+                replacement_hub_id = next_hub.id
+                logger.info("FLOW: Step 1 - Switched to next hub", next_hub_id=str(replacement_hub_id))
             else:
-                # Switch to default hub
-                navigation.current_smart_hub_id = default_hub.id
-                logger.info("FLOW: Step 1 - Switched to default hub", default_hub_id=str(default_hub.id))
-            
+                replacement_hub_id = default_hub.id
+                logger.info("FLOW: Step 1 - Switched to default hub", default_hub_id=str(replacement_hub_id))
+
+            replacement_matrix_id = await first_matrix_id_for_hub(
+                db, replacement_hub_id, owner_uuid
+            )
+            set_navigation_context(
+                navigation,
+                hub_id=replacement_hub_id,
+                matrix_id=replacement_matrix_id,
+            )
+
             await db.flush()
             logger.info("FLOW: Step 1 - Complete. Current hub updated in navigation")
         else:

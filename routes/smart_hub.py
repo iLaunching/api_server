@@ -41,23 +41,21 @@ class UpdateSmartHubDetailsRequest(BaseModel):
 # Current User Profile & Smart Hub
 # ============================================
 
-@router.get("/users/me/current-smart-hub")
-async def get_current_smart_hub(
-    session: Dict = Depends(get_current_session),
-    db: AsyncSession = Depends(get_db)
+async def _get_smart_hub_dashboard(
+    session: Dict,
+    db: AsyncSession,
+    *,
+    active_chat: bool,
 ):
     """
-    Get current user's active Smart Hub with theme data via relations.
-    NO SEARCH - Pure relational traversal for maximum performance.
-    
-    Relationship Flow:
-    1. user_id (from JWT) → UserProfile (user_id FK)
-    2. UserProfile → UserNavigation (user_profile_id FK)
-    3. UserNavigation → current_smart_hub (current_smart_hub_id FK)
-    4. UserProfile → appearance → ThemeConfig (appearance_id FK)
-    
-    All via direct foreign key relations - O(1) lookups!
+    Load Smart Hub dashboard via user_navigation.
+
+    active_chat=False → current_smart_hub_id / current_smart_matrix_id (web default)
+    active_chat=True  → ac_current_smart_hub_id / ac_current_smart_matrix_id (iOS Active Chat)
     """
+    nav_hub_rel = (
+        UserNavigation.ac_current_smart_hub if active_chat else UserNavigation.current_smart_hub
+    )
     try:
         user_id = session.get("user_id")
         
@@ -67,7 +65,11 @@ async def get_current_smart_hub(
                 detail="User ID not found in session"
             )
         
-        logger.info("Fetching current smart hub via relationship chain", user_id=user_id)
+        logger.info(
+            "Fetching smart hub via relationship chain",
+            user_id=user_id,
+            navigation_context="active_chat" if active_chat else "default",
+        )
         
         # Step 1: Get UserProfile with ALL related data via eager loading
         # This loads: user, appearance → theme_config, itheme → theme_config, account_type, avatar_color
@@ -103,14 +105,14 @@ async def get_current_smart_hub(
                 selectinload(UserProfile.smart_hubs)
                 .selectinload(SmartHub.smartHub_icon),
                 
-                # Load navigation with current smart hub and its hub_color and icon relationships
+                # Load navigation with current hub and its hub_color and icon relationships
                 selectinload(UserProfile.navigation)
-                .selectinload(UserNavigation.current_smart_hub)
+                .selectinload(nav_hub_rel)
                 .selectinload(SmartHub.hub_color)
                 .selectinload(OptionValue.theme_config),
                 
                 selectinload(UserProfile.navigation)
-                .selectinload(UserNavigation.current_smart_hub)
+                .selectinload(nav_hub_rel)
                 .selectinload(SmartHub.smartHub_icon)
             )
             .where(UserProfile.user_id == user_id)
@@ -137,7 +139,8 @@ async def get_current_smart_hub(
             navigation = UserNavigation(user_profile_id=profile.id)
             db.add(navigation)
             await db.commit()
-            await db.refresh(navigation, ['current_smart_hub'])
+            refresh_hub_key = "ac_current_smart_hub" if active_chat else "current_smart_hub"
+            await db.refresh(navigation, [refresh_hub_key])
             logger.info("User navigation created", navigation_id=str(navigation.id))
         
         # Step 2.5: Load icon metadata if profile has an icon
@@ -218,8 +221,9 @@ async def get_current_smart_hub(
         
         # Step 4: Build smart hub data from navigation relation (no search!)
         smart_hub_data = None
-        if navigation.current_smart_hub:
-            hub = navigation.current_smart_hub
+        active_hub = navigation.ac_current_smart_hub if active_chat else navigation.current_smart_hub
+        if active_hub:
+            hub = active_hub
             
             # Extract hub color from relationship (same pattern as avatar_color)
             hub_color = "#7F77F1"  # Default purple
@@ -295,18 +299,24 @@ async def get_current_smart_hub(
                 "your_role": "owner" if str(hub.owner_id) == str(user_id) else "member",
                 "team_members": []  # Placeholder for team members
             }
-            logger.info("Smart hub loaded from navigation", 
-                       hub_id=str(hub.id),
-                       hub_name=hub.name,
-                       hub_color=hub_color,
-                       show_grid=hub.show_grid,
-                       grid_style=hub.grid_style,
-                       snap_to_grid=hub.snap_to_grid)
+            logger.info(
+                "Smart hub loaded from navigation",
+                hub_id=str(hub.id),
+                hub_name=hub.name,
+                hub_color=hub_color,
+                show_grid=hub.show_grid,
+                grid_style=hub.grid_style,
+                snap_to_grid=hub.snap_to_grid,
+                navigation_context="active_chat" if active_chat else "default",
+            )
         
-        logger.info("Current smart hub retrieved successfully", 
-                   user_id=user_id,
-                   has_hub=smart_hub_data is not None,
-                   has_theme=theme_data is not None)
+        logger.info(
+            "Smart hub dashboard retrieved successfully",
+            user_id=user_id,
+            has_hub=smart_hub_data is not None,
+            has_theme=theme_data is not None,
+            navigation_context="active_chat" if active_chat else "default",
+        )
         
         # Build smart hubs list with colors, sorted by order_number
         smart_hubs_list = []
@@ -385,21 +395,49 @@ async def get_current_smart_hub(
         )
 
 
-@router.get("/users/me/current-smart-matrix")
-async def get_current_smart_matrix(
+@router.get("/users/me/current-smart-hub")
+async def get_current_smart_hub(
     session: Dict = Depends(get_current_session),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """
-    Get current user's active Smart Matrix with theme data via relations.
-    Pure relational traversal for maximum performance.
-    
-    Relationship Flow:
-    1. user_id (from JWT) → UserProfile (user_id FK)
-    2. UserProfile → UserNavigation (user_profile_id FK)
-    3. UserNavigation → current_smart_matrix (current_smart_matrix_id FK)
-    4. UserProfile → appearance → ThemeConfig (appearance_id FK)
+    Web / default context: user_navigation.current_smart_hub_id.
     """
+    return await _get_smart_hub_dashboard(session, db, active_chat=False)
+
+
+@router.get("/users/me/ac-current-smart-hub")
+async def get_ac_current_smart_hub(
+    session: Dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Active Chat context (iOS SmartHubsView): user_navigation.ac_current_smart_hub_id.
+    Same response shape as current-smart-hub.
+    """
+    return await _get_smart_hub_dashboard(session, db, active_chat=True)
+
+
+async def _get_smart_matrix_dashboard(
+    session: Dict,
+    db: AsyncSession,
+    *,
+    active_chat: bool,
+):
+    """
+    Load Smart Matrix dashboard via user_navigation.
+
+    active_chat=False → current_smart_matrix_id / current_smart_hub_id (web default)
+    active_chat=True  → ac_current_smart_matrix_id / ac_current_smart_hub_id (iOS Active Chat)
+    """
+    nav_matrix_rel = (
+        UserNavigation.ac_current_smart_matrix
+        if active_chat
+        else UserNavigation.current_smart_matrix
+    )
+    nav_hub_rel = (
+        UserNavigation.ac_current_smart_hub if active_chat else UserNavigation.current_smart_hub
+    )
     try:
         user_id = session.get("user_id")
         
@@ -409,7 +447,11 @@ async def get_current_smart_matrix(
                 detail="User ID not found in session"
             )
         
-        logger.info("Fetching current smart matrix via relationship chain", user_id=user_id)
+        logger.info(
+            "Fetching smart matrix via relationship chain",
+            user_id=user_id,
+            navigation_context="active_chat" if active_chat else "default",
+        )
         
         # Get UserProfile with related data via eager loading
         profile_query = (
@@ -428,11 +470,11 @@ async def get_current_smart_matrix(
                 
                 # Load navigation with current smart matrix
                 selectinload(UserProfile.navigation)
-                .selectinload(UserNavigation.current_smart_matrix),
+                .selectinload(nav_matrix_rel),
                 
                 # Load navigation with current smart hub
                 selectinload(UserProfile.navigation)
-                .selectinload(UserNavigation.current_smart_hub)
+                .selectinload(nav_hub_rel)
             )
             .where(UserProfile.user_id == user_id)
         )
@@ -457,7 +499,12 @@ async def get_current_smart_matrix(
             navigation = UserNavigation(user_profile_id=profile.id)
             db.add(navigation)
             await db.commit()
-            await db.refresh(navigation, ['current_smart_matrix', 'current_smart_hub'])
+            refresh_keys = (
+                ["ac_current_smart_matrix", "ac_current_smart_hub"]
+                if active_chat
+                else ["current_smart_matrix", "current_smart_hub"]
+            )
+            await db.refresh(navigation, refresh_keys)
             logger.info("User navigation created", navigation_id=str(navigation.id))
         
         # Build theme data from appearance + itheme relations
@@ -486,8 +533,13 @@ async def get_current_smart_matrix(
         
         # Build smart matrix data from navigation relation
         smart_matrix_data = None
-        if navigation.current_smart_matrix:
-            matrix = navigation.current_smart_matrix
+        active_matrix = (
+            navigation.ac_current_smart_matrix
+            if active_chat
+            else navigation.current_smart_matrix
+        )
+        if active_matrix:
+            matrix = active_matrix
             
             smart_matrix_data = {
                 "id": str(matrix.id),
@@ -499,14 +551,20 @@ async def get_current_smart_matrix(
                 "created_at": matrix.created_at.isoformat() if matrix.created_at else None,
                 "modified_at": matrix.modified_at.isoformat() if matrix.modified_at else None,
             }
-            logger.info("Smart matrix loaded from navigation", 
-                       matrix_id=str(matrix.id),
-                       matrix_name=matrix.name)
+            logger.info(
+                "Smart matrix loaded from navigation",
+                matrix_id=str(matrix.id),
+                matrix_name=matrix.name,
+                navigation_context="active_chat" if active_chat else "default",
+            )
         
         # Also get smart hub data if available
         smart_hub_data = None
-        if navigation.current_smart_hub:
-            hub = navigation.current_smart_hub
+        active_hub = (
+            navigation.ac_current_smart_hub if active_chat else navigation.current_smart_hub
+        )
+        if active_hub:
+            hub = active_hub
             smart_hub_data = {
                 "id": str(hub.id),
                 "name": hub.name,
@@ -515,10 +573,13 @@ async def get_current_smart_matrix(
                 "snap_to_grid": hub.snap_to_grid,
             }
         
-        logger.info("Current smart matrix retrieved successfully", 
-                   user_id=user_id,
-                   has_matrix=smart_matrix_data is not None,
-                   has_theme=theme_data is not None)
+        logger.info(
+            "Smart matrix dashboard retrieved successfully",
+            user_id=user_id,
+            has_matrix=smart_matrix_data is not None,
+            has_theme=theme_data is not None,
+            navigation_context="active_chat" if active_chat else "default",
+        )
         
         return {
             "smart_matrix": smart_matrix_data,
@@ -542,6 +603,27 @@ async def get_current_smart_matrix(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve current Smart Matrix"
         )
+
+
+@router.get("/users/me/current-smart-matrix")
+async def get_current_smart_matrix(
+    session: Dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    """Web / default context: user_navigation.current_smart_matrix_id."""
+    return await _get_smart_matrix_dashboard(session, db, active_chat=False)
+
+
+@router.get("/users/me/ac-current-smart-matrix")
+async def get_ac_current_smart_matrix(
+    session: Dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Active Chat context (iOS SmartMatrixView): user_navigation.ac_current_smart_matrix_id.
+    Same response shape as current-smart-matrix.
+    """
+    return await _get_smart_matrix_dashboard(session, db, active_chat=True)
 
 
 @router.get("/users/me/profile")

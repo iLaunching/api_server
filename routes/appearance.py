@@ -288,6 +288,14 @@ async def get_option_values_by_set(
                     "solid_color": metadata.get("solid_color", ""),
                     "menu_opacity_color": metadata.get("menu_opacity_color", ""),
                 }
+
+            # Add wallpaper_config if it exists (for wallpaper)
+            if ov.theme_config and option_set_name == "wallpaper":
+                metadata = ov.theme_config.theme_metadata or {}
+                value_dict["wallpaper_config"] = {
+                    "image_name": metadata.get("image_name", ""),
+                    "solid_color": metadata.get("solid_color", ""),
+                }
             
             response_data.append(value_dict)
         

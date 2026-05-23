@@ -32,7 +32,7 @@ async def seed_appearance():
                 'sort_order': 1,
                 'name': 'Sun',
                 'text_color': '#000000',
-                'background_color': '#FFFFFF',
+                'background_color': '#F8F9FA',
                 'menu_color': '#FFFFFF',
                 'border_line_color': '#d6d6d6',
                 'header_overlay_color': '#00000080',

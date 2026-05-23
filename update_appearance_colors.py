@@ -18,7 +18,7 @@ async def update_appearance_colors():
             {
                 'value_name': 'sun',
                 'text_color': '#000000',
-                'background_color': '#FFFFFF',
+                'background_color': '#F8F9FA',
                 'menu_color': '#FFFFFF',
                 'border_line_color': '#d6d6d6',
                 'header_overlay_color': '#00000080',

@@ -18,8 +18,16 @@ logger = structlog.get_logger()
 # Bearer token security
 security = HTTPBearer(auto_error=False)
 
-# Auth API URL
-AUTH_API_URL = os.getenv("AUTH_API_URL", "https://auth-server-production-b51c.up.railway.app")
+# Auth API URL (host only, or host + `/api/v1` — both are accepted)
+AUTH_API_URL = os.getenv("AUTH_API_URL", "https://auth-server-production-b51c.up.railway.app").rstrip("/")
+
+
+def _auth_me_validation_url() -> str:
+    """Build `/auth/me` URL whether AUTH_API_URL ends with `/api/v1` or not."""
+    if AUTH_API_URL.endswith("/api/v1"):
+        return f"{AUTH_API_URL}/auth/me"
+    return f"{AUTH_API_URL}/api/v1/auth/me"
+
 
 async def get_current_session(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> Dict:
     """
@@ -42,7 +50,7 @@ async def get_current_session(credentials: Optional[HTTPAuthorizationCredentials
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                f"{AUTH_API_URL}/api/v1/auth/me",
+                _auth_me_validation_url(),
                 headers={"Authorization": f"Bearer {token}"},
                 timeout=5.0
             )

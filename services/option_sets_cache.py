@@ -140,14 +140,14 @@ class OptionSetsCache:
             # Return default theme colors if theme not found
             return {
                 'text_color': '#000000',
-                'background_color': '#FFFFFF',
+                'background_color': '#F8F9FA',
                 'menu_color': '#F8F9FA',
                 'border_line_color': '#DEE2E6'
             }
         
         return {
             'text_color': theme.get('text_color', '#000000'),
-            'background_color': theme.get('background_color', '#FFFFFF'),
+            'background_color': theme.get('background_color', '#F8F9FA'),
             'menu_color': theme.get('menu_color', '#F8F9FA'),
             'border_line_color': theme.get('border_line_color', '#DEE2E6')
         }

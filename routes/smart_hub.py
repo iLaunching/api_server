@@ -17,7 +17,12 @@ from pathlib import Path
 from config.database import get_db
 from auth.middleware import get_current_session
 from models.database_models import UserNavigation, SmartHub, SmartMatrix, OptionValue, ThemeConfig
+from models.active_chat import ActiveChat
 from models.user import UserProfile
+from services.active_chat import (
+    update_ac_active_chat_appearance,
+    update_ac_active_chat_itheme,
+)
 from services.user_navigation_sync import (
     first_matrix_id_for_hub,
     set_navigation_context,
@@ -40,6 +45,102 @@ class UpdateSmartHubDetailsRequest(BaseModel):
 # ============================================
 # Current User Profile & Smart Hub
 # ============================================
+
+def _build_theme_data_from_appearance_itheme(appearance_ov, itheme_ov) -> Optional[Dict[str, Any]]:
+    """Build dashboard theme dict from appearance + itheme option values (web SmartHub `theme.background`)."""
+    if not appearance_ov or not appearance_ov.theme_config:
+        return None
+
+    theme_config = appearance_ov.theme_config
+    appearance_metadata = theme_config.theme_metadata or {}
+
+    theme_data: Dict[str, Any] = {
+        "header_overlay": theme_config.header_overlay_color,
+        "background": theme_config.background_color,
+        "text": theme_config.text_color,
+        "appearance_text_color": theme_config.text_color,
+        "menu": theme_config.menu_color,
+        "border": theme_config.border_line_color,
+        "user_button_color": theme_config.user_button_color or "#ffffff59",
+        "user_button_hover": theme_config.user_button_hover or "#ffffff66",
+        "user_button_icon": theme_config.user_button_icon or "#000000",
+        "title_menu_color_light": theme_config.title_menu_color_light or "#d6d6d6",
+        "border_line_color_light": theme_config.border_line_color_light or "#d6d6d680",
+        "global_button_hover": theme_config.global_button_hover or "#d6d6d64d",
+        "chat_bk_1": theme_config.chat_bk_1,
+        "prompt_bk": theme_config.prompt_bk,
+        "prompt_text_color": theme_config.prompt_text_color,
+        "ai_acknowledge_text_color": theme_config.ai_acknowledge_text_color,
+        "danger_button_solid_color": theme_config.danger_button_solid_color or "#C62A2FFF",
+        "danger_button_hover": theme_config.danger_button_hover or "#C62A2F26",
+        "danger_tone_bk": theme_config.danger_tone_bk or "#C62A2F26",
+        "danger_tone_border": theme_config.danger_tone_border or "#C62A2F61",
+        "danger_tone_text": theme_config.danger_tone_text or "#C62A2FFF",
+        "danger_bk_light_color": theme_config.danger_bk_light_color or "#C62A2F26",
+        "danger_bk_solid_color": theme_config.danger_bk_solid_color or "#C62A2FFF",
+        "danger_bk_solid_text_color": theme_config.danger_bk_solid_text_color or "#ffffff",
+        "line_grid_color": theme_config.line_grid_color or "#d6d6d6",
+        "dotted_grid_color": theme_config.dotted_grid_color or "#a0a0a0",
+        "feedback_indicator_bk": appearance_metadata.get("feedback_indicator_bk", "#7F77F1"),
+    }
+
+    if itheme_ov and itheme_ov.theme_config:
+        itheme_metadata = itheme_ov.theme_config.theme_metadata or {}
+        solid_color_value = itheme_metadata.get("solid_color", "#7F77F1")
+        theme_data["header_background"] = solid_color_value
+        theme_data["solid_color"] = solid_color_value
+        theme_data["bg_opacity"] = itheme_metadata.get("bg_opacity", "#7F77F125")
+        theme_data["menu_bg_opacity"] = itheme_metadata.get("menu_bg_opacity", "#7F77F114")
+        theme_data["tone_button_bk_color"] = itheme_metadata.get("toneButton_bk_color", "#7F77F166")
+        theme_data["tone_button_text_color"] = itheme_metadata.get("toneButton_text_color", "#6B63DD")
+        theme_data["tone_button_border_color"] = itheme_metadata.get("toneButton_border_color", "#6B63DD")
+        theme_data["button_bk_color"] = itheme_metadata.get("button_bk_color", "#7F77F1")
+        theme_data["button_text_color"] = itheme_metadata.get("button_text_color", "#ffffff")
+        theme_data["button_hover_color"] = itheme_metadata.get("button_hover_color", "#6B63DD")
+
+    return theme_data
+
+
+async def _ensure_ac_navigation_pointers(
+    db: AsyncSession,
+    navigation: UserNavigation,
+    profile: UserProfile,
+    user_id: uuid.UUID,
+) -> None:
+    """
+    iOS reads user_profiles → user_navigation.ac_current_smart_hub_id.
+    Backfill when NULL (mirror migration 044 at runtime for new rows).
+    """
+    if navigation.ac_current_smart_hub_id is not None:
+        return
+
+    hub_uuid: Optional[uuid.UUID] = None
+    if navigation.current_smart_hub_id is not None:
+        hub_uuid = navigation.current_smart_hub_id
+    elif profile.smart_hubs:
+        sorted_hubs = sorted(
+            profile.smart_hubs,
+            key=lambda h: (
+                0 if h.is_default else 1,
+                h.order_number if h.order_number is not None else 999999,
+                h.created_at,
+            ),
+        )
+        hub_uuid = sorted_hubs[0].id
+
+    if hub_uuid is None:
+        return
+
+    matrix_id = await first_matrix_id_for_hub(db, hub_uuid, user_id)
+    navigation.set_current_context(hub_uuid, matrix_id)
+    await db.commit()
+    logger.info(
+        "Initialized ac_current navigation pointers",
+        user_id=str(user_id),
+        ac_current_smart_hub_id=str(hub_uuid),
+        ac_current_smart_matrix_id=str(matrix_id) if matrix_id else None,
+    )
+
 
 async def _get_smart_hub_dashboard(
     session: Dict,
@@ -113,7 +214,19 @@ async def _get_smart_hub_dashboard(
                 
                 selectinload(UserProfile.navigation)
                 .selectinload(nav_hub_rel)
-                .selectinload(SmartHub.smartHub_icon)
+                .selectinload(SmartHub.smartHub_icon),
+
+                selectinload(UserProfile.navigation)
+                .selectinload(nav_hub_rel)
+                .selectinload(SmartHub.active_chat)
+                .selectinload(ActiveChat.appearance)
+                .selectinload(OptionValue.theme_config),
+
+                selectinload(UserProfile.navigation)
+                .selectinload(nav_hub_rel)
+                .selectinload(SmartHub.active_chat)
+                .selectinload(ActiveChat.itheme)
+                .selectinload(OptionValue.theme_config),
             )
             .where(UserProfile.user_id == user_id)
         )
@@ -142,6 +255,10 @@ async def _get_smart_hub_dashboard(
             refresh_hub_key = "ac_current_smart_hub" if active_chat else "current_smart_hub"
             await db.refresh(navigation, [refresh_hub_key])
             logger.info("User navigation created", navigation_id=str(navigation.id))
+
+        if active_chat:
+            await _ensure_ac_navigation_pointers(db, navigation, profile, uuid.UUID(str(user_id)))
+            await db.refresh(navigation, ["ac_current_smart_hub", "ac_current_smart_matrix"])
         
         # Step 2.5: Load icon metadata if profile has an icon
         icon_metadata = None
@@ -158,67 +275,27 @@ async def _get_smart_hub_dashboard(
             if icon_row:
                 icon_metadata = {"icon_name": icon_row[0], "icon_prefix": icon_row[1]}
         
-        # Step 3: Build theme data from appearance + itheme relations (no search!)
-        theme_data = None
-        if profile.appearance and profile.appearance.theme_config:
-            theme_config = profile.appearance.theme_config
-            appearance_metadata = theme_config.theme_metadata or {}
-            
-            theme_data = {
-                "header_overlay": theme_config.header_overlay_color,
-                "background": theme_config.background_color,
-                "text": theme_config.text_color,
-                "appearance_text_color": theme_config.text_color,  # Add explicit appearance_text_color
-                "menu": theme_config.menu_color,
-                "border": theme_config.border_line_color,
-                "user_button_color": theme_config.user_button_color or "#ffffff59",
-                "user_button_hover": theme_config.user_button_hover or "#ffffff66",
-                "user_button_icon": theme_config.user_button_icon or "#000000",
-                "title_menu_color_light": theme_config.title_menu_color_light or "#d6d6d6",
-                "border_line_color_light": theme_config.border_line_color_light or "#d6d6d680",
-                "global_button_hover": theme_config.global_button_hover or "#d6d6d64d",
-                "chat_bk_1": theme_config.chat_bk_1,  # Chat background gradient
-                "prompt_bk": theme_config.prompt_bk,  # Prompt background color
-                "prompt_text_color": theme_config.prompt_text_color,  # Prompt text color
-                "ai_acknowledge_text_color": theme_config.ai_acknowledge_text_color,  # AI acknowledgment text color
-                # Danger colors
-                "danger_button_solid_color": theme_config.danger_button_solid_color or "#C62A2FFF",
-                "danger_button_hover": theme_config.danger_button_hover or "#C62A2F26",
-                "danger_tone_bk": theme_config.danger_tone_bk or "#C62A2F26",
-                "danger_tone_border": theme_config.danger_tone_border or "#C62A2F61",
-                "danger_tone_text": theme_config.danger_tone_text or "#C62A2FFF",
-                "danger_bk_light_color": theme_config.danger_bk_light_color or "#C62A2F26",
-                "danger_bk_solid_color": theme_config.danger_bk_solid_color or "#C62A2FFF",
-                "danger_bk_solid_text_color": theme_config.danger_bk_solid_text_color or "#ffffff",
-                # Grid colors for canvas
-                "line_grid_color": theme_config.line_grid_color or "#d6d6d6",
-                "dotted_grid_color": theme_config.dotted_grid_color or "#a0a0a0",
-                # Add appearance theme metadata properties
-                "feedback_indicator_bk": appearance_metadata.get("feedback_indicator_bk", "#7F77F1")
-            }
-            
-            # Add itheme solid_color for MainHeader background
-            if profile.itheme and profile.itheme.theme_config:
-                itheme_metadata = profile.itheme.theme_config.theme_metadata or {}
-                solid_color_value = itheme_metadata.get("solid_color", "#7F77F1")
-                theme_data["header_background"] = solid_color_value  # Default to ipurple
-                theme_data["solid_color"] = solid_color_value  # Add solid_color for frontend components
-                theme_data["bg_opacity"] = itheme_metadata.get("bg_opacity", "#7F77F125")
-                theme_data["menu_bg_opacity"] = itheme_metadata.get("menu_bg_opacity", "#7F77F114")
-                theme_data["tone_button_bk_color"] = itheme_metadata.get("toneButton_bk_color", "#7F77F166")
-                theme_data["tone_button_text_color"] = itheme_metadata.get("toneButton_text_color", "#6B63DD")
-                theme_data["tone_button_border_color"] = itheme_metadata.get("toneButton_border_color", "#6B63DD")
-                theme_data["button_bk_color"] = itheme_metadata.get("button_bk_color", "#7F77F1")
-                theme_data["button_text_color"] = itheme_metadata.get("button_text_color", "#ffffff")
-                theme_data["button_hover_color"] = itheme_metadata.get("button_hover_color", "#6B63DD")
-                logger.info("Theme data loaded", 
-                           appearance_name=profile.appearance.value_name,
-                           itheme_name=profile.itheme.value_name,
-                           header_bg=theme_data["header_background"])
-            else:
-                logger.info("Theme data loaded from appearance only", 
-                           appearance_name=profile.appearance.value_name)
-        
+        # Step 3: Theme from appearance + itheme (iOS Active Chat uses hub activeChat row, else user_profiles).
+        appearance_ov = profile.appearance
+        itheme_ov = profile.itheme
+        theme_hub = (
+            navigation.ac_current_smart_hub if active_chat else navigation.current_smart_hub
+        ) if navigation else None
+        if active_chat and theme_hub and theme_hub.active_chat:
+            ac = theme_hub.active_chat
+            if ac.appearance:
+                appearance_ov = ac.appearance
+            if ac.itheme:
+                itheme_ov = ac.itheme
+            logger.info(
+                "Theme sources from activeChat",
+                hub_id=str(theme_hub.id),
+                appearance_id=appearance_ov.id if appearance_ov else None,
+                itheme_id=itheme_ov.id if itheme_ov else None,
+            )
+
+        theme_data = _build_theme_data_from_appearance_itheme(appearance_ov, itheme_ov)
+
         # Step 4: Build smart hub data from navigation relation (no search!)
         smart_hub_data = None
         active_hub = navigation.ac_current_smart_hub if active_chat else navigation.current_smart_hub
@@ -343,9 +420,55 @@ async def _get_smart_hub_dashboard(
         
         logger.info("Smart hubs loaded and sorted", count=len(smart_hubs_list))
         
+        navigation_payload = None
+        if navigation:
+            navigation_payload = {
+                "ac_current_smart_hub_id": (
+                    str(navigation.ac_current_smart_hub_id)
+                    if navigation.ac_current_smart_hub_id
+                    else None
+                ),
+                "ac_current_smart_matrix_id": (
+                    str(navigation.ac_current_smart_matrix_id)
+                    if navigation.ac_current_smart_matrix_id
+                    else None
+                ),
+                "current_smart_hub_id": (
+                    str(navigation.current_smart_hub_id)
+                    if navigation.current_smart_hub_id
+                    else None
+                ),
+                "current_smart_matrix_id": (
+                    str(navigation.current_smart_matrix_id)
+                    if navigation.current_smart_matrix_id
+                    else None
+                ),
+            }
+
+        active_chat_theme_payload = None
+        if active_chat:
+            active_chat_theme_payload = {
+                "appearance": {
+                    "id": appearance_ov.id,
+                    "value_name": appearance_ov.value_name,
+                    "display_name": appearance_ov.display_name,
+                }
+                if appearance_ov
+                else None,
+                "itheme": {
+                    "id": itheme_ov.id,
+                    "value_name": itheme_ov.value_name,
+                    "display_name": itheme_ov.display_name,
+                }
+                if itheme_ov
+                else None,
+            }
+
         return {
             "smart_hub": smart_hub_data,
             "theme": theme_data,
+            "navigation": navigation_payload,
+            "active_chat_theme": active_chat_theme_payload,
             "profile": {
                 "id": str(profile.id),
                 "user_id": str(profile.user_id),
@@ -358,13 +481,17 @@ async def _get_smart_hub_dashboard(
                 "appearance": {
                     "id": profile.appearance.id,
                     "value_name": profile.appearance.value_name,
-                    "display_name": profile.appearance.display_name
-                } if profile.appearance else None,
+                    "display_name": profile.appearance.display_name,
+                }
+                if profile.appearance
+                else None,
                 "itheme": {
                     "id": profile.itheme.id,
                     "value_name": profile.itheme.value_name,
-                    "display_name": profile.itheme.display_name
-                } if profile.itheme else None,
+                    "display_name": profile.itheme.display_name,
+                }
+                if profile.itheme
+                else None,
                 "avatar_color": {
                     "id": profile.avatar_color.id,
                     "value_name": profile.avatar_color.value_name,
@@ -416,6 +543,98 @@ async def get_ac_current_smart_hub(
     Same response shape as current-smart-hub.
     """
     return await _get_smart_hub_dashboard(session, db, active_chat=True)
+
+
+@router.patch("/users/me/ac-current-smart-hub/appearance")
+async def update_ac_current_smart_hub_appearance(
+    appearance_id: int,
+    session: Dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    iOS Active Chat: update appearance on the AC hub's activeChat row only (not user_profiles).
+    """
+    user_id = session.get("user_id")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User ID not found in session",
+        )
+    try:
+        active_chat_id = await update_ac_active_chat_appearance(
+            db, uuid.UUID(str(user_id)), appearance_id
+        )
+        logger.info(
+            "ac activeChat appearance updated",
+            user_id=user_id,
+            appearance_id=appearance_id,
+            active_chat_id=active_chat_id,
+        )
+        return {
+            "message": "Active Chat appearance updated successfully",
+            "appearance_id": appearance_id,
+            "active_chat_id": active_chat_id,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(
+            "failed to update ac activeChat appearance",
+            user_id=user_id,
+            appearance_id=appearance_id,
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update Active Chat appearance: {str(e)}",
+        )
+
+
+@router.patch("/users/me/ac-current-smart-hub/itheme")
+async def update_ac_current_smart_hub_itheme(
+    itheme_id: int,
+    session: Dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    iOS Active Chat: update iTheme on the AC hub's activeChat row only (not user_profiles).
+    """
+    user_id = session.get("user_id")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User ID not found in session",
+        )
+    try:
+        active_chat_id = await update_ac_active_chat_itheme(
+            db, uuid.UUID(str(user_id)), itheme_id
+        )
+        logger.info(
+            "ac activeChat itheme updated",
+            user_id=user_id,
+            itheme_id=itheme_id,
+            active_chat_id=active_chat_id,
+        )
+        return {
+            "message": "Active Chat iTheme updated successfully",
+            "itheme_id": itheme_id,
+            "active_chat_id": active_chat_id,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(
+            "failed to update ac activeChat itheme",
+            user_id=user_id,
+            itheme_id=itheme_id,
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update Active Chat iTheme: {str(e)}",
+        )
 
 
 async def _get_smart_matrix_dashboard(
@@ -905,7 +1124,7 @@ async def update_appearance(
             )
         
         await db.commit()
-        
+
         logger.info("=== APPEARANCE UPDATED SUCCESSFULLY ===", user_id=user_id, appearance_id=appearance_id)
         
         return {

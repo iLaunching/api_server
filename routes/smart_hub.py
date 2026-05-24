@@ -20,6 +20,7 @@ from models.database_models import UserNavigation, SmartHub, SmartMatrix, Option
 from models.active_chat import ActiveChat
 from models.user import UserProfile
 from services.active_chat import (
+    ensure_active_chat_for_hub,
     update_ac_active_chat_appearance,
     update_ac_active_chat_itheme,
 )
@@ -259,6 +260,12 @@ async def _get_smart_hub_dashboard(
         if active_chat:
             await _ensure_ac_navigation_pointers(db, navigation, profile, uuid.UUID(str(user_id)))
             await db.refresh(navigation, ["ac_current_smart_hub", "ac_current_smart_matrix"])
+            ac_hub = navigation.ac_current_smart_hub
+            if ac_hub is not None and ac_hub.active_chat is None:
+                await ensure_active_chat_for_hub(
+                    db, uuid.UUID(str(user_id)), ac_hub
+                )
+                await db.refresh(ac_hub, ["active_chat"])
         
         # Step 2.5: Load icon metadata if profile has an icon
         icon_metadata = None

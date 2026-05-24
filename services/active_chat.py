@@ -120,6 +120,7 @@ async def update_ac_active_chat_appearance(
         {"appearance_id": appearance_id, "active_chat_id": active_chat.id},
     )
     await db.commit()
+    await db.refresh(active_chat)
     return active_chat.id
 
 
@@ -141,4 +142,5 @@ async def update_ac_active_chat_itheme(
         {"itheme_id": itheme_id, "active_chat_id": active_chat.id},
     )
     await db.commit()
+    await db.refresh(active_chat)
     return active_chat.id

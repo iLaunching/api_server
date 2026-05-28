@@ -11,6 +11,7 @@ from auth.middleware import get_current_session
 from config.database import get_db
 from config.media_settings import media_upload_status
 from services.synaptic_background_payload import build_synaptic_expressive_background_payload
+from services.media_r2 import normalize_image_content_type
 from services.user_media import (
     apply_user_wallpaper_to_synaptic_background,
     create_user_wallpaper_upload,
@@ -50,17 +51,19 @@ async def upload_user_wallpaper(
             detail="User ID not found in session",
         )
 
-    content_type = (file.content_type or "").split(";")[0].strip().lower()
     body = await file.read()
     if not body:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file")
 
     try:
+        content_type = normalize_image_content_type(
+            file.content_type, body, filename=file.filename
+        )
         row = await create_user_wallpaper_upload(
             db,
             uuid.UUID(str(user_id)),
             body,
-            content_type or "application/octet-stream",
+            content_type,
         )
     except ValueError as exc:
         raise HTTPException(
@@ -106,18 +109,20 @@ async def apply_user_wallpaper_to_background(
             detail="User ID not found in session",
         )
 
-    content_type = (file.content_type or "").split(";")[0].strip().lower()
     body = await file.read()
     if not body:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file")
 
     uid = uuid.UUID(str(user_id))
     try:
+        content_type = normalize_image_content_type(
+            file.content_type, body, filename=file.filename
+        )
         row, bg = await apply_user_wallpaper_to_synaptic_background(
             db,
             uid,
             body,
-            content_type or "application/octet-stream",
+            content_type,
             pan_x=pan_x,
             pan_y=pan_y,
             dim_opacity=dim_opacity,
@@ -143,7 +148,12 @@ async def apply_user_wallpaper_to_background(
             detail="Failed to apply wallpaper to background",
         ) from exc
 
+    media_payload = serialize_user_media(row)
     synaptic_payload = await build_synaptic_expressive_background_payload(db, bg, user_id=uid)
+    if bg.background_kind == "user_photo" and not synaptic_payload.get(
+        "user_photo_delivery_url"
+    ):
+        synaptic_payload["user_photo_delivery_url"] = media_payload.get("delivery_url")
     logger.info(
         "user_wallpaper_applied_to_synaptic_background",
         user_id=str(user_id),
@@ -155,6 +165,6 @@ async def apply_user_wallpaper_to_background(
     )
     return {
         "message": "Wallpaper applied to synaptic expressive background",
-        "media": serialize_user_media(row),
+        "media": media_payload,
         "synaptic_expressive_background": synaptic_payload,
     }

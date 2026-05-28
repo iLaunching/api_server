@@ -10,8 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models.user_media import UserMedia
 from services.media_delivery import build_delivery_url, pick_width_bucket
 from services.media_r2 import (
-    ALLOWED_IMAGE_CONTENT_TYPES,
     extension_for_content_type,
+    normalize_image_content_type,
     put_user_object,
     wallpaper_object_path,
 )
@@ -40,9 +40,7 @@ async def stage_user_wallpaper_upload(
     content_type: str,
 ) -> UserMedia:
     """Upload to R2 and insert user_media row (flush only — caller commits)."""
-    ct = (content_type or "").split(";")[0].strip().lower()
-    if ct not in ALLOWED_IMAGE_CONTENT_TYPES:
-        raise ValueError("unsupported_content_type")
+    ct = normalize_image_content_type(content_type, body)
     if not body or len(body) > 20 * 1024 * 1024:
         raise ValueError("invalid_body_size")
 

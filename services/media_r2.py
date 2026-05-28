@@ -25,6 +25,49 @@ ALLOWED_IMAGE_CONTENT_TYPES = frozenset(
     }
 )
 
+_FILENAME_EXT_TO_CONTENT_TYPE = {
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "png": "image/png",
+    "webp": "image/webp",
+}
+
+
+def sniff_image_content_type(body: bytes) -> str | None:
+    if len(body) >= 3 and body[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if len(body) >= 8 and body[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if len(body) >= 12 and body[:4] == b"RIFF" and body[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+def normalize_image_content_type(
+    content_type: str | None,
+    body: bytes,
+    *,
+    filename: str | None = None,
+) -> str:
+    """
+    Accept declared multipart types; sniff bytes / filename when clients send octet-stream.
+    """
+    ct = (content_type or "").split(";")[0].strip().lower()
+    if ct == "image/jpg":
+        ct = "image/jpeg"
+    if ct in ALLOWED_IMAGE_CONTENT_TYPES:
+        return ct
+    if ct in ("application/octet-stream", "binary/octet-stream", ""):
+        sniffed = sniff_image_content_type(body)
+        if sniffed:
+            return sniffed
+        if filename and "." in filename:
+            ext = filename.rsplit(".", 1)[-1].lower()
+            mapped = _FILENAME_EXT_TO_CONTENT_TYPE.get(ext)
+            if mapped:
+                return mapped
+    raise ValueError("unsupported_content_type")
+
 
 def wallpaper_object_path(user_id: uuid.UUID, upload_id: uuid.UUID, ext: str) -> str:
     return f"users/{user_id}/wallpapers/{upload_id}.{ext}"

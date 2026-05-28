@@ -43,6 +43,7 @@ from routes.protocol_routes import router as protocol_router
 from routes.chat_routes import router as chat_router
 from services.option_sets_cache import option_sets_cache
 from config.database import init_database, init_redis, close_database, check_database_health, check_redis_health
+from config.media_settings import media_upload_status
 
 # Configure structured logging
 structlog.configure(
@@ -77,7 +78,16 @@ async def lifespan(app: FastAPI):
     await init_database()
     redis_client = await init_redis()
     await option_sets_cache.load_cache()
-    
+
+    media_status = media_upload_status()
+    if media_status["configured"]:
+        logger.info("Media upload configured", worker_url_set=True)
+    else:
+        logger.warning(
+            "Media upload NOT configured — user wallpaper Set will return 503",
+            missing_env=media_status["missing_env"],
+        )
+
     yield
     
     # Shutdown
@@ -175,7 +185,12 @@ async def health_check():
     
     # Check active WebSocket connections
     health_status["websocket_connections"] = len(websocket_connections)
-    
+
+    media_status = media_upload_status()
+    health_status["media_upload"] = media_status
+    if not media_status["configured"]:
+        health_status["status"] = "degraded"
+
     logger.info("Health check", **health_status)
     
     # Return 200 OK even if degraded - Railway healthcheck requires 2xx/3xx

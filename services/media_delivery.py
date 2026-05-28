@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import math
-import os
 from typing import Literal
+
+from config.media_settings import get_media_settings
 
 DIMENSION_STEP = 50
 MAX_DIMENSION = 4096
@@ -31,10 +32,11 @@ def pick_width_bucket(needed_px: int) -> int:
 
 
 def media_base_url(lane: Literal["catalog", "user"] | str = "catalog") -> str:
+    settings = get_media_settings()
     if lane == "user":
-        base = os.getenv("MEDIA_USER_BASE_URL") or os.getenv("MEDIA_CDN_BASE_URL")
+        base = settings.user_base_url or settings.worker_url
     else:
-        base = os.getenv("MEDIA_CATALOG_BASE_URL") or os.getenv("MEDIA_CDN_BASE_URL")
+        base = settings.catalog_base_url or settings.worker_url
     if not base:
         base = "https://ilaunching-media-server.ilaunching-ltd.workers.dev"
     return base.rstrip("/")

@@ -9,10 +9,27 @@ import uuid
 
 from auth.middleware import get_current_session
 from config.database import get_db
+from config.media_settings import media_upload_status
 from services.user_media import create_user_wallpaper_upload, serialize_user_media
 
 logger = structlog.get_logger()
 router = APIRouter()
+
+
+@router.get("/media/upload-status")
+async def get_media_upload_status():
+    """
+    Ops check: confirms Railway has Worker URL + ingest secret (does not call Worker).
+    """
+    status = media_upload_status()
+    return {
+        "ok": status["configured"],
+        **status,
+        "hint": (
+            "Set MEDIA_WORKER_URL and MEDIA_INGEST_SECRET on Railway api-server; "
+            "set INGEST_SECRET to the same value on the Cloudflare Worker."
+        ),
+    }
 
 
 @router.post("/users/me/media/wallpapers")

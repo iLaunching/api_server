@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-import os
 import re
 import uuid
 
 import httpx
 import structlog
+
+from config.media_settings import get_media_settings
 
 logger = structlog.get_logger()
 
@@ -48,10 +49,16 @@ async def put_user_object(
     if not USER_WALLPAPER_PATH.match(object_path):
         raise ValueError("invalid_user_wallpaper_object_path")
 
-    worker_url = (os.getenv("MEDIA_WORKER_URL") or "").rstrip("/")
-    ingest_secret = os.getenv("MEDIA_INGEST_SECRET") or os.getenv("INGEST_SECRET")
-    if not worker_url or not ingest_secret:
-        raise RuntimeError("MEDIA_WORKER_URL and MEDIA_INGEST_SECRET must be configured")
+    settings = get_media_settings()
+    if not settings.upload_configured:
+        missing = ", ".join(settings.missing_for_upload())
+        raise RuntimeError(
+            f"Media upload is not configured. Set on Railway api-server: {missing}. "
+            "INGEST_SECRET must match the Cloudflare Worker secret."
+        )
+
+    worker_url = settings.worker_url
+    ingest_secret = settings.ingest_secret
 
     key = f"raw/{object_path}"
     url = f"{worker_url}/media/v1/internal/object"

@@ -64,7 +64,7 @@ def build_delivery_url(
             parts.append(f"w_{width}")
         if height:
             parts.append(f"h_{height}")
-        parts.append(f"q_{quality}", f"c_{crop}")
+        parts.extend([f"q_{quality}", f"c_{crop}"])
         transform = ",".join(parts)
 
     return f"{base}/{transform}/{lane_seg}/{path}"

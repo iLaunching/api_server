@@ -12,6 +12,16 @@ from services.media_catalog import resolve_catalog_photo
 from services.user_media import get_user_media_for_user, user_media_delivery_url
 
 
+def _normalize_pattern_overlay_gradient(raw: Any) -> Any | None:
+    """Drop malformed JSONB so iOS decoding does not fail on partial gradient objects."""
+    if not isinstance(raw, dict):
+        return None
+    stops = raw.get("stops")
+    if not isinstance(stops, list) or len(stops) < 2:
+        return None
+    return raw
+
+
 async def build_synaptic_expressive_background_payload(
     db: AsyncSession,
     bg: SynapticExpressiveBackground,
@@ -28,7 +38,9 @@ async def build_synaptic_expressive_background_payload(
         "pattern_id": bg.pattern_id,
         "pattern_delivery_url": bg.pattern_delivery_url,
         "pattern_opacity": bg.pattern_opacity,
-        "pattern_overlay_gradient": bg.pattern_overlay_gradient,
+        "pattern_overlay_gradient": _normalize_pattern_overlay_gradient(
+            bg.pattern_overlay_gradient
+        ),
         "media_photo_id": bg.media_photo_id,
         "user_photo_id": str(bg.user_photo_id) if bg.user_photo_id else None,
         "pan_x": bg.pan_x,

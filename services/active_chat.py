@@ -47,10 +47,8 @@ async def ensure_active_chat_for_hub(
     await db.flush()
 
     # Ensure a 1:1 synaptic expressive background row exists and link from activeChat.
-    syn_bg = SynapticExpressiveBackground(user_id=user_id, active_chat_id=active_chat.id)
-    db.add(syn_bg)
-    await db.flush()
-    active_chat.synaptic_expressive_background_id = syn_bg.id
+    # Use the shared helper to keep behavior idempotent and consistent.
+    await ensure_synaptic_background_for_active_chat(db, user_id, active_chat)
 
     hub.activeChat = active_chat.id
     await db.commit()

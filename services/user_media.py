@@ -33,12 +33,13 @@ def user_media_delivery_url(object_path: str, *, width_px: int = 1950) -> str:
     return build_delivery_url(object_path=object_path, lane="user", width=w, crop="fit")
 
 
-async def create_user_wallpaper_upload(
+async def stage_user_wallpaper_upload(
     db: AsyncSession,
     user_id: uuid.UUID,
     body: bytes,
     content_type: str,
 ) -> UserMedia:
+    """Upload to R2 and insert user_media row (flush only — caller commits)."""
     ct = (content_type or "").split(";")[0].strip().lower()
     if ct not in ALLOWED_IMAGE_CONTENT_TYPES:
         raise ValueError("unsupported_content_type")
@@ -60,9 +61,50 @@ async def create_user_wallpaper_upload(
         byte_size=len(body),
     )
     db.add(row)
+    await db.flush()
+    return row
+
+
+async def create_user_wallpaper_upload(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    body: bytes,
+    content_type: str,
+) -> UserMedia:
+    row = await stage_user_wallpaper_upload(db, user_id, body, content_type)
     await db.commit()
     await db.refresh(row)
     return row
+
+
+async def apply_user_wallpaper_to_synaptic_background(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    body: bytes,
+    content_type: str,
+    *,
+    pan_x: float,
+    pan_y: float,
+    dim_opacity: float,
+):
+    """
+    Upload user wallpaper and update synapticExpressiveBackground in one DB transaction.
+    """
+    from services.active_chat import update_ac_synaptic_expressive_background
+
+    row = await stage_user_wallpaper_upload(db, user_id, body, content_type)
+    bg = await update_ac_synaptic_expressive_background(
+        db,
+        user_id,
+        {
+            "background_kind": "user_photo",
+            "user_photo_id": row.id,
+            "pan_x": pan_x,
+            "pan_y": pan_y,
+            "dim_opacity": dim_opacity,
+        },
+    )
+    return row, bg
 
 
 def serialize_user_media(row: UserMedia, *, width_px: int = 1950) -> dict:

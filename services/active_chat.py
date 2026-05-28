@@ -161,17 +161,8 @@ async def ensure_synaptic_background_for_active_chat(
 ) -> SynapticExpressiveBackground:
     """
     Ensure the activeChat row has a linked synapticExpressiveBackground row and FK pointer.
+    Always resolve by active_chat_id first (source of truth); sync FK when mismatched.
     """
-    if getattr(active_chat, "synaptic_expressive_background_id", None):
-        result = await db.execute(
-            select(SynapticExpressiveBackground).where(
-                SynapticExpressiveBackground.id == active_chat.synaptic_expressive_background_id
-            )
-        )
-        existing = result.scalar_one_or_none()
-        if existing is not None:
-            return existing
-
     result = await db.execute(
         select(SynapticExpressiveBackground).where(
             SynapticExpressiveBackground.active_chat_id == active_chat.id
@@ -179,17 +170,50 @@ async def ensure_synaptic_background_for_active_chat(
     )
     existing_by_chat = result.scalar_one_or_none()
     if existing_by_chat is not None:
-        active_chat.synaptic_expressive_background_id = existing_by_chat.id
-        await db.commit()
-        await db.refresh(active_chat)
+        if active_chat.synaptic_expressive_background_id != existing_by_chat.id:
+            await db.execute(
+                text(
+                    """
+                    UPDATE "activeChat"
+                    SET synaptic_expressive_background_id = :bg_id, updated_at = NOW()
+                    WHERE id = :active_chat_id
+                    """
+                ),
+                {
+                    "bg_id": existing_by_chat.id,
+                    "active_chat_id": active_chat.id,
+                },
+            )
+            await db.flush()
+            active_chat.synaptic_expressive_background_id = existing_by_chat.id
         return existing_by_chat
+
+    fk_id = getattr(active_chat, "synaptic_expressive_background_id", None)
+    if fk_id:
+        result = await db.execute(
+            select(SynapticExpressiveBackground).where(
+                SynapticExpressiveBackground.id == fk_id
+            )
+        )
+        by_fk = result.scalar_one_or_none()
+        if by_fk is not None and by_fk.active_chat_id == active_chat.id:
+            return by_fk
 
     syn_bg = SynapticExpressiveBackground(user_id=user_id, active_chat_id=active_chat.id)
     db.add(syn_bg)
     await db.flush()
+    await db.execute(
+        text(
+            """
+            UPDATE "activeChat"
+            SET synaptic_expressive_background_id = :bg_id, updated_at = NOW()
+            WHERE id = :active_chat_id
+            """
+        ),
+        {"bg_id": syn_bg.id, "active_chat_id": active_chat.id},
+    )
+    await db.flush()
     active_chat.synaptic_expressive_background_id = syn_bg.id
-    await db.commit()
-    await db.refresh(active_chat)
     return syn_bg
 
 
@@ -299,7 +323,7 @@ async def update_ac_synaptic_expressive_background(
         payload["pan_y"] = 0
         payload["dim_opacity"] = 0
 
-    await db.execute(
+    update_result = await db.execute(
         text(
             """
             UPDATE "synapticExpressiveBackground"
@@ -318,10 +342,12 @@ async def update_ac_synaptic_expressive_background(
               dim_opacity = :dim_opacity,
               updated_at = NOW()
             WHERE id = :id
+              AND active_chat_id = :active_chat_id
             """
         ),
         {
             "id": bg.id,
+            "active_chat_id": active_chat.id,
             "background_kind": payload.get("background_kind", bg.background_kind),
             "solid_hex": payload.get("solid_hex"),
             "pattern_category_slug": payload.get("pattern_category_slug"),
@@ -340,6 +366,17 @@ async def update_ac_synaptic_expressive_background(
             "dim_opacity": payload.get("dim_opacity", 0),
         },
     )
+    if update_result.rowcount == 0:
+        logger.error(
+            "synaptic_expressive_background_update_missed",
+            synaptic_id=bg.id,
+            active_chat_id=active_chat.id,
+            background_kind=payload.get("background_kind"),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Synaptic expressive background row could not be updated",
+        )
     await db.commit()
 
     result = await db.execute(

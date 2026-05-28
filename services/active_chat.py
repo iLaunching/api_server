@@ -243,7 +243,7 @@ async def update_ac_synaptic_expressive_background(
               pattern_category_slug = :pattern_category_slug,
               pattern_id = :pattern_id,
               pattern_opacity = :pattern_opacity,
-              pattern_overlay_gradient = :pattern_overlay_gradient::jsonb,
+              pattern_overlay_gradient = CAST(:pattern_overlay_gradient AS jsonb),
               media_photo_id = :media_photo_id,
               user_photo_id = :user_photo_id,
               pan_x = :pan_x,

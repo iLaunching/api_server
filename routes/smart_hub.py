@@ -712,6 +712,14 @@ async def update_ac_current_smart_hub_synaptic_expressive_background(
                 exclude={"reset_to_defaults"},
                 exclude_none=True,
             )
+            # Always persist crop + dim overlay for photo wallpapers (null JSON keys must not
+            # fall through to UPDATE defaults).
+            if request.background_kind in ("media_photo", "user_photo"):
+                payload["pan_x"] = float(request.pan_x if request.pan_x is not None else 0.0)
+                payload["pan_y"] = float(request.pan_y if request.pan_y is not None else 0.0)
+                payload["dim_opacity"] = float(
+                    request.dim_opacity if request.dim_opacity is not None else 0.0
+                )
             bg = await update_ac_synaptic_expressive_background(
                 db,
                 uuid.UUID(str(user_id)),

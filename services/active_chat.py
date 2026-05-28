@@ -11,6 +11,8 @@ import uuid
 
 import structlog
 from fastapi import HTTPException, status
+import json
+
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -151,3 +153,127 @@ async def update_ac_active_chat_itheme(
     await db.commit()
     await db.refresh(active_chat)
     return active_chat.id
+
+
+async def ensure_synaptic_background_for_active_chat(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    active_chat: ActiveChat,
+) -> SynapticExpressiveBackground:
+    """
+    Ensure the activeChat row has a linked synapticExpressiveBackground row and FK pointer.
+    """
+    if getattr(active_chat, "synaptic_expressive_background_id", None):
+        result = await db.execute(
+            select(SynapticExpressiveBackground).where(
+                SynapticExpressiveBackground.id == active_chat.synaptic_expressive_background_id
+            )
+        )
+        existing = result.scalar_one_or_none()
+        if existing is not None:
+            return existing
+
+    result = await db.execute(
+        select(SynapticExpressiveBackground).where(
+            SynapticExpressiveBackground.active_chat_id == active_chat.id
+        )
+    )
+    existing_by_chat = result.scalar_one_or_none()
+    if existing_by_chat is not None:
+        active_chat.synaptic_expressive_background_id = existing_by_chat.id
+        await db.commit()
+        await db.refresh(active_chat)
+        return existing_by_chat
+
+    syn_bg = SynapticExpressiveBackground(user_id=user_id, active_chat_id=active_chat.id)
+    db.add(syn_bg)
+    await db.flush()
+    active_chat.synaptic_expressive_background_id = syn_bg.id
+    await db.commit()
+    await db.refresh(active_chat)
+    return syn_bg
+
+
+async def update_ac_synaptic_expressive_background(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    payload: dict,
+) -> SynapticExpressiveBackground:
+    """
+    Update the synapticExpressiveBackground row for the user's current Active Chat hub.
+    Payload is a validated dict from the route layer.
+    """
+    _, active_chat = await get_ac_current_hub_active_chat(db, user_id)
+    bg = await ensure_synaptic_background_for_active_chat(db, user_id, active_chat)
+
+    # Normalize kind-specific clearing to avoid stale fields.
+    kind = payload.get("background_kind")
+    if kind == "pattern":
+        payload["media_photo_id"] = None
+        payload["user_photo_id"] = None
+        payload["dim_opacity"] = 0
+    elif kind == "media_photo":
+        payload["pattern_category_slug"] = None
+        payload["pattern_id"] = None
+        payload["pattern_opacity"] = 1
+        payload["pattern_overlay_gradient"] = None
+        payload["user_photo_id"] = None
+    elif kind == "user_photo":
+        payload["pattern_category_slug"] = None
+        payload["pattern_id"] = None
+        payload["pattern_opacity"] = 1
+        payload["pattern_overlay_gradient"] = None
+        payload["media_photo_id"] = None
+    elif kind == "solid":
+        payload["pattern_category_slug"] = None
+        payload["pattern_id"] = None
+        payload["pattern_opacity"] = 1
+        payload["pattern_overlay_gradient"] = None
+        payload["media_photo_id"] = None
+        payload["user_photo_id"] = None
+        payload["pan_x"] = 0
+        payload["pan_y"] = 0
+        payload["dim_opacity"] = 0
+
+    await db.execute(
+        text(
+            """
+            UPDATE "synapticExpressiveBackground"
+            SET
+              background_kind = :background_kind,
+              solid_hex = :solid_hex,
+              pattern_category_slug = :pattern_category_slug,
+              pattern_id = :pattern_id,
+              pattern_opacity = :pattern_opacity,
+              pattern_overlay_gradient = :pattern_overlay_gradient::jsonb,
+              media_photo_id = :media_photo_id,
+              user_photo_id = :user_photo_id,
+              pan_x = :pan_x,
+              pan_y = :pan_y,
+              dim_opacity = :dim_opacity,
+              updated_at = NOW()
+            WHERE id = :id
+            """
+        ),
+        {
+            "id": bg.id,
+            "background_kind": payload.get("background_kind", bg.background_kind),
+            "solid_hex": payload.get("solid_hex"),
+            "pattern_category_slug": payload.get("pattern_category_slug"),
+            "pattern_id": payload.get("pattern_id"),
+            "pattern_opacity": payload.get("pattern_opacity", 1),
+            "pattern_overlay_gradient": (
+                json.dumps(payload.get("pattern_overlay_gradient"))
+                if payload.get("pattern_overlay_gradient") is not None
+                else None
+            ),
+            "media_photo_id": payload.get("media_photo_id"),
+            "user_photo_id": payload.get("user_photo_id"),
+            "pan_x": payload.get("pan_x", 0),
+            "pan_y": payload.get("pan_y", 0),
+            "dim_opacity": payload.get("dim_opacity", 0),
+        },
+    )
+    await db.commit()
+    await db.refresh(bg)
+    return bg

@@ -23,6 +23,7 @@ from services.active_chat import (
     ensure_active_chat_for_hub,
     update_ac_active_chat_appearance,
     update_ac_active_chat_itheme,
+    update_ac_synaptic_expressive_background,
 )
 from services.user_navigation_sync import (
     first_matrix_id_for_hub,
@@ -42,6 +43,20 @@ class UpdateSmartHubDetailsRequest(BaseModel):
     smart_hub_id: str
     name: Optional[str] = None
     description: Optional[str] = None
+
+
+class UpdateAcSynapticExpressiveBackgroundRequest(BaseModel):
+    background_kind: str  # solid | pattern | media_photo | user_photo
+    solid_hex: Optional[str] = None
+    pattern_category_slug: Optional[str] = None
+    pattern_id: Optional[str] = None
+    pattern_opacity: Optional[float] = None
+    pattern_overlay_gradient: Optional[Dict[str, Any]] = None
+    media_photo_id: Optional[str] = None
+    user_photo_id: Optional[str] = None
+    pan_x: Optional[float] = None
+    pan_y: Optional[float] = None
+    dim_opacity: Optional[float] = None
 
 # ============================================
 # Current User Profile & Smart Hub
@@ -671,6 +686,47 @@ async def update_ac_current_smart_hub_itheme(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update Active Chat iTheme: {str(e)}",
+        )
+
+
+@router.patch("/users/me/ac-current-smart-hub/synaptic-expressive-background")
+async def update_ac_current_smart_hub_synaptic_expressive_background(
+    request: UpdateAcSynapticExpressiveBackgroundRequest,
+    session: Dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    iOS Active Chat — persist SynapticExpressiveBackground settings for the AC hub.
+    Called when the user taps Set in wallpaper/pattern preview sheets.
+    """
+    user_id = session.get("user_id")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User ID not found in session",
+        )
+    try:
+        bg = await update_ac_synaptic_expressive_background(
+            db,
+            uuid.UUID(str(user_id)),
+            request.model_dump(),
+        )
+        return {
+            "message": "Synaptic expressive background updated",
+            "synaptic_expressive_background_id": bg.id,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(
+            "failed to update synaptic expressive background",
+            user_id=user_id,
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update synaptic expressive background: {str(e)}",
         )
 
 

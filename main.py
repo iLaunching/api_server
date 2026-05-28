@@ -31,6 +31,7 @@ from routes.streaming import router as streaming_router
 from routes.appearance import router as appearance_router
 from routes.onboarding import router as onboarding_router
 from routes.smart_hub import router as smart_hub_router
+from routes.media import router as media_router
 from routes.icons import router as icons_router
 from routes.account import router as account_router
 from routes.worker import router as worker_router
@@ -117,6 +118,7 @@ app.include_router(status_router)
 app.include_router(streaming_router)
 app.include_router(appearance_router, prefix="/api/v1", tags=["appearance"])
 app.include_router(smart_hub_router, prefix="/api/v1", tags=["smart-hub"])
+app.include_router(media_router, prefix="/api/v1", tags=["media"])
 app.include_router(icons_router, prefix="/api/v1", tags=["icons"])
 app.include_router(account_router, prefix="/api/v1", tags=["account"])
 app.include_router(worker_router, prefix="/api/v1", tags=["worker"])

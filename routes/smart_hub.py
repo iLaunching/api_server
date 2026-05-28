@@ -26,6 +26,7 @@ from services.active_chat import (
     reset_ac_synaptic_expressive_background,
     update_ac_synaptic_expressive_background,
 )
+from services.synaptic_background_payload import build_synaptic_expressive_background_payload
 from services.user_navigation_sync import (
     first_matrix_id_for_hub,
     set_navigation_context,
@@ -322,25 +323,11 @@ async def _get_smart_hub_dashboard(
             if getattr(ac, "synaptic_expressive_background", None) is not None:
                 bg = ac.synaptic_expressive_background
                 syn_bg_id = getattr(ac, "synaptic_expressive_background_id", None)
-                syn_bg_payload = {
-                    "id": bg.id,
-                    "active_chat_id": bg.active_chat_id,
-                    "user_id": str(bg.user_id),
-                    "background_kind": bg.background_kind,
-                    "solid_hex": bg.solid_hex,
-                    "pattern_category_slug": bg.pattern_category_slug,
-                    "pattern_id": bg.pattern_id,
-                    "pattern_delivery_url": bg.pattern_delivery_url,
-                    "pattern_opacity": bg.pattern_opacity,
-                    "pattern_overlay_gradient": bg.pattern_overlay_gradient,
-                    "media_photo_id": bg.media_photo_id,
-                    "user_photo_id": str(bg.user_photo_id) if bg.user_photo_id else None,
-                    "pan_x": bg.pan_x,
-                    "pan_y": bg.pan_y,
-                    "dim_opacity": bg.dim_opacity,
-                    "created_at": bg.created_at.isoformat() if bg.created_at else None,
-                    "updated_at": bg.updated_at.isoformat() if bg.updated_at else None,
-                }
+                syn_bg_payload = await build_synaptic_expressive_background_payload(
+                    db,
+                    bg,
+                    user_id=uuid.UUID(str(user_id)),
+                )
             logger.info(
                 "Theme sources from activeChat",
                 hub_id=str(theme_hub.id),

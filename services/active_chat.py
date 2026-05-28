@@ -21,6 +21,7 @@ from models.active_chat import ActiveChat
 from models.database_models import SmartHub, UserNavigation
 from models.synaptic_expressive_background import SynapticExpressiveBackground
 from models.user import UserProfile
+from services.user_media import get_user_media_for_user
 
 logger = structlog.get_logger()
 
@@ -262,6 +263,30 @@ async def update_ac_synaptic_expressive_background(
         payload["pattern_opacity"] = 1
         payload["pattern_overlay_gradient"] = None
         payload["media_photo_id"] = None
+        raw_user_photo_id = payload.get("user_photo_id")
+        if not raw_user_photo_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="user_photo_id is required when background_kind is user_photo",
+            )
+        try:
+            photo_uuid = (
+                raw_user_photo_id
+                if isinstance(raw_user_photo_id, uuid.UUID)
+                else uuid.UUID(str(raw_user_photo_id))
+            )
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid user_photo_id",
+            ) from exc
+        media = await get_user_media_for_user(db, photo_uuid, user_id)
+        if media is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="user_photo_id not found for this user",
+            )
+        payload["user_photo_id"] = photo_uuid
     elif kind == "solid":
         payload["pattern_category_slug"] = None
         payload["pattern_id"] = None

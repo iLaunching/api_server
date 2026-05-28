@@ -36,6 +36,13 @@ class ActiveChat(Base):
         index=True,
         default=10,
     )
+    synaptic_expressive_background_id = Column(
+        Integer,
+        ForeignKey('synapticExpressiveBackground.id', ondelete="SET NULL"),
+        nullable=True,
+        unique=True,
+        index=True,
+    )
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(
         DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
@@ -47,6 +54,12 @@ class ActiveChat(Base):
         "SmartHub",
         foreign_keys="SmartHub.activeChat",
         back_populates="active_chat",
+    )
+
+    synaptic_expressive_background = relationship(
+        "SynapticExpressiveBackground",
+        foreign_keys=[synaptic_expressive_background_id],
+        uselist=False,
     )
 
     def __repr__(self):

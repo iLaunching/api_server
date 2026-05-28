@@ -40,6 +40,9 @@ MIGRATIONS = [
     "043_drop_active_chat_avatar_columns.sql",
     "044_add_ac_current_navigation_to_user_navigation.sql",
     "045_update_sun_appearance_background_color.sql",
+    "046_create_synaptic_expressive_background.sql",
+    "047_add_synexp_bg_fk_to_active_chat.sql",
+    "048_backfill_synexp_bg_fk_on_active_chat.sql",
 ]
 
 async def run_all_migrations():

@@ -17,6 +17,7 @@ from sqlalchemy.orm import selectinload
 
 from models.active_chat import ActiveChat
 from models.database_models import SmartHub, UserNavigation
+from models.synaptic_expressive_background import SynapticExpressiveBackground
 from models.user import UserProfile
 
 logger = structlog.get_logger()
@@ -42,6 +43,12 @@ async def ensure_active_chat_for_hub(
     active_chat = ActiveChat(user_id=user_id)
     db.add(active_chat)
     await db.flush()
+
+    # Ensure a 1:1 synaptic expressive background row exists and link from activeChat.
+    syn_bg = SynapticExpressiveBackground(user_id=user_id, active_chat_id=active_chat.id)
+    db.add(syn_bg)
+    await db.flush()
+    active_chat.synaptic_expressive_background_id = syn_bg.id
 
     hub.activeChat = active_chat.id
     await db.commit()

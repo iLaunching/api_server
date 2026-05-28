@@ -228,6 +228,11 @@ async def _get_smart_hub_dashboard(
                 .selectinload(SmartHub.active_chat)
                 .selectinload(ActiveChat.itheme)
                 .selectinload(OptionValue.theme_config),
+
+                selectinload(UserProfile.navigation)
+                .selectinload(nav_hub_rel)
+                .selectinload(SmartHub.active_chat)
+                .selectinload(ActiveChat.synaptic_expressive_background),
             )
             .where(UserProfile.user_id == user_id)
         )
@@ -288,12 +293,35 @@ async def _get_smart_hub_dashboard(
         theme_hub = (
             navigation.ac_current_smart_hub if active_chat else navigation.current_smart_hub
         ) if navigation else None
+        syn_bg_payload = None
+        syn_bg_id = None
         if active_chat and theme_hub and theme_hub.active_chat:
             ac = theme_hub.active_chat
             if ac.appearance:
                 appearance_ov = ac.appearance
             if ac.itheme:
                 itheme_ov = ac.itheme
+            if getattr(ac, "synaptic_expressive_background", None) is not None:
+                bg = ac.synaptic_expressive_background
+                syn_bg_id = getattr(ac, "synaptic_expressive_background_id", None)
+                syn_bg_payload = {
+                    "id": bg.id,
+                    "active_chat_id": bg.active_chat_id,
+                    "user_id": str(bg.user_id),
+                    "background_kind": bg.background_kind,
+                    "solid_hex": bg.solid_hex,
+                    "pattern_category_slug": bg.pattern_category_slug,
+                    "pattern_id": bg.pattern_id,
+                    "pattern_opacity": bg.pattern_opacity,
+                    "pattern_overlay_gradient": bg.pattern_overlay_gradient,
+                    "media_photo_id": bg.media_photo_id,
+                    "user_photo_id": str(bg.user_photo_id) if bg.user_photo_id else None,
+                    "pan_x": bg.pan_x,
+                    "pan_y": bg.pan_y,
+                    "dim_opacity": bg.dim_opacity,
+                    "created_at": bg.created_at.isoformat() if bg.created_at else None,
+                    "updated_at": bg.updated_at.isoformat() if bg.updated_at else None,
+                }
             logger.info(
                 "Theme sources from activeChat",
                 hub_id=str(theme_hub.id),
@@ -469,6 +497,8 @@ async def _get_smart_hub_dashboard(
                 }
                 if itheme_ov
                 else None,
+                "synaptic_expressive_background_id": syn_bg_id,
+                "synaptic_expressive_background": syn_bg_payload,
             }
 
         return {

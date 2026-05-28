@@ -341,5 +341,10 @@ async def update_ac_synaptic_expressive_background(
         },
     )
     await db.commit()
-    await db.refresh(bg)
-    return bg
+
+    result = await db.execute(
+        select(SynapticExpressiveBackground).where(
+            SynapticExpressiveBackground.id == bg.id
+        )
+    )
+    return result.scalar_one()

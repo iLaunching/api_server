@@ -708,12 +708,26 @@ async def update_ac_current_smart_hub_synaptic_expressive_background(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="background_kind is required unless reset_to_defaults is true",
                 )
+            payload = request.model_dump(
+                exclude={"reset_to_defaults"},
+                exclude_none=True,
+            )
             bg = await update_ac_synaptic_expressive_background(
                 db,
                 uuid.UUID(str(user_id)),
-                request.model_dump(exclude={"reset_to_defaults"}),
+                payload,
             )
             message = "Synaptic expressive background updated"
+            logger.info(
+                "synaptic_expressive_background_updated",
+                user_id=user_id,
+                background_kind=bg.background_kind,
+                user_photo_id=str(bg.user_photo_id) if bg.user_photo_id else None,
+                media_photo_id=bg.media_photo_id,
+                pan_x=bg.pan_x,
+                pan_y=bg.pan_y,
+                dim_opacity=bg.dim_opacity,
+            )
         synaptic_payload = await build_synaptic_expressive_background_payload(
             db,
             bg,

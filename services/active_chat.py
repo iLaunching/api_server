@@ -213,18 +213,21 @@ async def update_ac_synaptic_expressive_background(
     elif kind == "media_photo":
         payload["pattern_category_slug"] = None
         payload["pattern_id"] = None
+        payload["pattern_delivery_url"] = None
         payload["pattern_opacity"] = 1
         payload["pattern_overlay_gradient"] = None
         payload["user_photo_id"] = None
     elif kind == "user_photo":
         payload["pattern_category_slug"] = None
         payload["pattern_id"] = None
+        payload["pattern_delivery_url"] = None
         payload["pattern_opacity"] = 1
         payload["pattern_overlay_gradient"] = None
         payload["media_photo_id"] = None
     elif kind == "solid":
         payload["pattern_category_slug"] = None
         payload["pattern_id"] = None
+        payload["pattern_delivery_url"] = None
         payload["pattern_opacity"] = 1
         payload["pattern_overlay_gradient"] = None
         payload["media_photo_id"] = None
@@ -242,6 +245,7 @@ async def update_ac_synaptic_expressive_background(
               solid_hex = :solid_hex,
               pattern_category_slug = :pattern_category_slug,
               pattern_id = :pattern_id,
+              pattern_delivery_url = :pattern_delivery_url,
               pattern_opacity = :pattern_opacity,
               pattern_overlay_gradient = CAST(:pattern_overlay_gradient AS jsonb),
               media_photo_id = :media_photo_id,
@@ -259,6 +263,7 @@ async def update_ac_synaptic_expressive_background(
             "solid_hex": payload.get("solid_hex"),
             "pattern_category_slug": payload.get("pattern_category_slug"),
             "pattern_id": payload.get("pattern_id"),
+            "pattern_delivery_url": payload.get("pattern_delivery_url"),
             "pattern_opacity": payload.get("pattern_opacity", 1),
             "pattern_overlay_gradient": (
                 json.dumps(payload.get("pattern_overlay_gradient"))

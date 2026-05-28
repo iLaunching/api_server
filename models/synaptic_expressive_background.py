@@ -40,6 +40,7 @@ class SynapticExpressiveBackground(Base):
 
     pattern_category_slug = Column(Text, nullable=True)
     pattern_id = Column(Text, nullable=True)
+    pattern_delivery_url = Column(Text, nullable=True)
     pattern_opacity = Column(Float, nullable=False, default=1.0)
     pattern_overlay_gradient = Column(JSONB, nullable=True)
 

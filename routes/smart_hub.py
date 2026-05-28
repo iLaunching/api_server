@@ -50,6 +50,7 @@ class UpdateAcSynapticExpressiveBackgroundRequest(BaseModel):
     solid_hex: Optional[str] = None
     pattern_category_slug: Optional[str] = None
     pattern_id: Optional[str] = None
+    pattern_delivery_url: Optional[str] = None
     pattern_opacity: Optional[float] = None
     pattern_overlay_gradient: Optional[Dict[str, Any]] = None
     media_photo_id: Optional[str] = None
@@ -327,6 +328,7 @@ async def _get_smart_hub_dashboard(
                     "solid_hex": bg.solid_hex,
                     "pattern_category_slug": bg.pattern_category_slug,
                     "pattern_id": bg.pattern_id,
+                    "pattern_delivery_url": bg.pattern_delivery_url,
                     "pattern_opacity": bg.pattern_opacity,
                     "pattern_overlay_gradient": bg.pattern_overlay_gradient,
                     "media_photo_id": bg.media_photo_id,

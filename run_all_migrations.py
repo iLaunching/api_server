@@ -43,6 +43,7 @@ MIGRATIONS = [
     "046_create_synaptic_expressive_background.sql",
     "047_add_synexp_bg_fk_to_active_chat.sql",
     "048_backfill_synexp_bg_fk_on_active_chat.sql",
+    "049_add_pattern_delivery_url.sql",
 ]
 
 async def run_all_migrations():

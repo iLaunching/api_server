@@ -44,6 +44,7 @@ MIGRATIONS = [
     "047_add_synexp_bg_fk_to_active_chat.sql",
     "048_backfill_synexp_bg_fk_on_active_chat.sql",
     "049_add_pattern_delivery_url.sql",
+    "050_create_user_media.sql",
 ]
 
 async def run_all_migrations():

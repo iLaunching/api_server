@@ -714,9 +714,15 @@ async def update_ac_current_smart_hub_synaptic_expressive_background(
                 request.model_dump(exclude={"reset_to_defaults"}),
             )
             message = "Synaptic expressive background updated"
+        synaptic_payload = await build_synaptic_expressive_background_payload(
+            db,
+            bg,
+            user_id=uuid.UUID(str(user_id)),
+        )
         return {
             "message": message,
             "synaptic_expressive_background_id": bg.id,
+            "synaptic_expressive_background": synaptic_payload,
         }
     except HTTPException:
         raise

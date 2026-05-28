@@ -192,6 +192,44 @@ async def ensure_synaptic_background_for_active_chat(
     return syn_bg
 
 
+async def reset_ac_synaptic_expressive_background(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+) -> SynapticExpressiveBackground:
+    """
+    Reset synapticExpressiveBackground to factory defaults for the AC hub's activeChat.
+    """
+    _, active_chat = await get_ac_current_hub_active_chat(db, user_id)
+    bg = await ensure_synaptic_background_for_active_chat(db, user_id, active_chat)
+
+    await db.execute(
+        text(
+            """
+            UPDATE "synapticExpressiveBackground"
+            SET
+              background_kind = 'solid',
+              solid_hex = NULL,
+              pattern_category_slug = NULL,
+              pattern_id = NULL,
+              pattern_delivery_url = NULL,
+              pattern_opacity = 1,
+              pattern_overlay_gradient = NULL,
+              media_photo_id = NULL,
+              user_photo_id = NULL,
+              pan_x = 0,
+              pan_y = 0,
+              dim_opacity = 0,
+              updated_at = NOW()
+            WHERE id = :id
+            """
+        ),
+        {"id": bg.id},
+    )
+    await db.commit()
+    await db.refresh(bg)
+    return bg
+
+
 async def update_ac_synaptic_expressive_background(
     db: AsyncSession,
     user_id: uuid.UUID,

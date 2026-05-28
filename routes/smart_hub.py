@@ -23,6 +23,7 @@ from services.active_chat import (
     ensure_active_chat_for_hub,
     update_ac_active_chat_appearance,
     update_ac_active_chat_itheme,
+    reset_ac_synaptic_expressive_background,
     update_ac_synaptic_expressive_background,
 )
 from services.user_navigation_sync import (
@@ -46,7 +47,8 @@ class UpdateSmartHubDetailsRequest(BaseModel):
 
 
 class UpdateAcSynapticExpressiveBackgroundRequest(BaseModel):
-    background_kind: str  # solid | pattern | media_photo | user_photo
+    reset_to_defaults: bool = False
+    background_kind: Optional[str] = None  # solid | pattern | media_photo | user_photo
     solid_hex: Optional[str] = None
     pattern_category_slug: Optional[str] = None
     pattern_id: Optional[str] = None
@@ -708,13 +710,25 @@ async def update_ac_current_smart_hub_synaptic_expressive_background(
             detail="User ID not found in session",
         )
     try:
-        bg = await update_ac_synaptic_expressive_background(
-            db,
-            uuid.UUID(str(user_id)),
-            request.model_dump(),
-        )
+        if request.reset_to_defaults:
+            bg = await reset_ac_synaptic_expressive_background(
+                db, uuid.UUID(str(user_id))
+            )
+            message = "Synaptic expressive background reset to defaults"
+        else:
+            if not request.background_kind:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="background_kind is required unless reset_to_defaults is true",
+                )
+            bg = await update_ac_synaptic_expressive_background(
+                db,
+                uuid.UUID(str(user_id)),
+                request.model_dump(exclude={"reset_to_defaults"}),
+            )
+            message = "Synaptic expressive background updated"
         return {
-            "message": "Synaptic expressive background updated",
+            "message": message,
             "synaptic_expressive_background_id": bg.id,
         }
     except HTTPException:

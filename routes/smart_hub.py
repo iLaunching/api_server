@@ -720,6 +720,10 @@ async def update_ac_current_smart_hub_synaptic_expressive_background(
                 payload["dim_opacity"] = float(
                     request.dim_opacity if request.dim_opacity is not None else 0.0
                 )
+            elif request.background_kind == "pattern":
+                payload["pattern_opacity"] = float(
+                    request.pattern_opacity if request.pattern_opacity is not None else 1.0
+                )
             bg = await update_ac_synaptic_expressive_background(
                 db,
                 uuid.UUID(str(user_id)),

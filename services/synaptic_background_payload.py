@@ -37,7 +37,7 @@ async def build_synaptic_expressive_background_payload(
         "pattern_category_slug": bg.pattern_category_slug,
         "pattern_id": bg.pattern_id,
         "pattern_delivery_url": bg.pattern_delivery_url,
-        "pattern_opacity": bg.pattern_opacity,
+        "pattern_opacity": float(bg.pattern_opacity if bg.pattern_opacity is not None else 1.0),
         "pattern_overlay_gradient": _normalize_pattern_overlay_gradient(
             bg.pattern_overlay_gradient
         ),

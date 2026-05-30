@@ -15,6 +15,12 @@ logger = structlog.get_logger()
 USER_WALLPAPER_PATH = re.compile(
     r"^users/[0-9a-fA-F-]{36}/wallpapers/[0-9a-fA-F-]{36}\.(webp|jpe?g|png)$"
 )
+USER_PATTERN_PATH = re.compile(
+    r"^users/[0-9a-fA-F-]{36}/patterns/[0-9a-fA-F-]{36}\.svg$"
+)
+USER_OBJECT_PATH = re.compile(
+    r"^users/[0-9a-fA-F-]{36}/(?:wallpapers/[0-9a-fA-F-]{36}\.(?:webp|jpe?g|png)|patterns/[0-9a-fA-F-]{36}\.svg)$"
+)
 
 ALLOWED_IMAGE_CONTENT_TYPES = frozenset(
     {
@@ -73,6 +79,10 @@ def wallpaper_object_path(user_id: uuid.UUID, upload_id: uuid.UUID, ext: str) ->
     return f"users/{user_id}/wallpapers/{upload_id}.{ext}"
 
 
+def pattern_object_path(user_id: uuid.UUID, record_id: uuid.UUID) -> str:
+    return f"users/{user_id}/patterns/{record_id}.svg"
+
+
 def extension_for_content_type(content_type: str) -> str:
     ct = (content_type or "").split(";")[0].strip().lower()
     if ct == "image/webp":
@@ -89,8 +99,8 @@ async def put_user_object(
     body: bytes,
     content_type: str,
 ) -> None:
-    if not USER_WALLPAPER_PATH.match(object_path):
-        raise ValueError("invalid_user_wallpaper_object_path")
+    if not USER_OBJECT_PATH.match(object_path):
+        raise ValueError("invalid_user_object_path")
 
     settings = get_media_settings()
     if not settings.upload_configured:

@@ -3,8 +3,8 @@
 from datetime import datetime
 import uuid
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from config.database import Base
 
@@ -30,6 +30,11 @@ class UserMedia(Base):
     source_catalog_photo_id = Column(Text, nullable=True)
     source_collection_slug = Column(Text, nullable=True)
     last_used_at = Column(DateTime(timezone=True), nullable=True)
+    pattern_category_slug = Column(Text, nullable=True)
+    pattern_id = Column(Text, nullable=True)
+    pattern_delivery_url = Column(Text, nullable=True)
+    pattern_opacity = Column(Float, nullable=True)
+    pattern_overlay_gradient = Column(JSONB, nullable=True)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(
         DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow

@@ -10,14 +10,17 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.user_media import UserMedia
+from services.asset_patterns import fetch_pattern_svg_bytes, resolve_pattern_delivery_url
 from services.media_catalog import fetch_catalog_object_bytes, resolve_catalog_photo
 from services.media_delivery import build_delivery_url, pick_width_bucket
 from services.media_r2 import (
     extension_for_content_type,
     normalize_image_content_type,
+    pattern_object_path,
     put_user_object,
     wallpaper_object_path,
 )
+from services.pattern_overlay import normalize_pattern_overlay_gradient
 
 logger = structlog.get_logger()
 
@@ -179,6 +182,97 @@ async def record_catalog_wallpaper_recently_used(
     return row
 
 
+async def record_pattern_recently_used(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    *,
+    pattern_category_slug: str | None,
+    pattern_id: str | None,
+    pattern_delivery_url: str | None,
+    pattern_opacity: float | None,
+    pattern_overlay_gradient: dict | None,
+) -> UserMedia | None:
+    slug = (pattern_category_slug or "").strip()
+    pid = (pattern_id or "").strip()
+    delivery = resolve_pattern_delivery_url(pattern_delivery_url)
+    if not slug or not pid or not delivery:
+        logger.warning(
+            "recently_used_pattern_missing_fields",
+            user_id=str(user_id),
+            pattern_category_slug=slug,
+            pattern_id=pid,
+        )
+        return None
+
+    overlay = normalize_pattern_overlay_gradient(pattern_overlay_gradient)
+    opacity = float(pattern_opacity if pattern_opacity is not None else 1.0)
+    opacity = max(0.0, min(1.0, opacity))
+    title = pid.replace("-", " ").strip().title() or "Pattern"
+    now = datetime.now(timezone.utc)
+
+    existing = await db.execute(
+        select(UserMedia).where(
+            UserMedia.user_id == user_id,
+            UserMedia.kind == "pattern",
+            UserMedia.pattern_category_slug == slug,
+            UserMedia.pattern_id == pid,
+        )
+    )
+    row = existing.scalar_one_or_none()
+    if row is not None:
+        await db.execute(
+            update(UserMedia)
+            .where(UserMedia.id == row.id)
+            .values(
+                pattern_delivery_url=delivery,
+                pattern_opacity=opacity,
+                pattern_overlay_gradient=overlay,
+                last_used_at=now,
+                updated_at=now,
+            )
+        )
+        await db.commit()
+        await db.refresh(row)
+        return row
+
+    try:
+        body, content_type = await fetch_pattern_svg_bytes(delivery)
+    except Exception:
+        logger.exception(
+            "recently_used_pattern_fetch_failed",
+            user_id=str(user_id),
+            pattern_category_slug=slug,
+            pattern_id=pid,
+        )
+        return None
+
+    record_id = uuid.uuid4()
+    object_path = pattern_object_path(user_id, record_id)
+    await put_user_object(object_path, body, content_type)
+
+    row = UserMedia(
+        id=record_id,
+        user_id=user_id,
+        kind="pattern",
+        object_path=object_path,
+        content_type=content_type,
+        byte_size=len(body),
+        title=title,
+        source_kind="catalog",
+        pattern_category_slug=slug,
+        pattern_id=pid,
+        pattern_delivery_url=delivery,
+        pattern_opacity=opacity,
+        pattern_overlay_gradient=overlay,
+        last_used_at=now,
+    )
+    db.add(row)
+    await db.flush()
+    await db.commit()
+    await db.refresh(row)
+    return row
+
+
 async def sync_recently_used_from_synaptic_background(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -186,12 +280,27 @@ async def sync_recently_used_from_synaptic_background(
     background_kind: str | None,
     media_photo_id: str | None,
     user_photo_id: uuid.UUID | None,
+    pattern_category_slug: str | None = None,
+    pattern_id: str | None = None,
+    pattern_delivery_url: str | None = None,
+    pattern_opacity: float | None = None,
+    pattern_overlay_gradient: dict | None = None,
 ) -> None:
     try:
         if background_kind == "media_photo" and media_photo_id:
             await record_catalog_wallpaper_recently_used(db, user_id, media_photo_id)
         elif background_kind == "user_photo" and user_photo_id:
             await touch_wallpaper_recently_used(db, user_id, user_photo_id)
+        elif background_kind == "pattern" and pattern_id:
+            await record_pattern_recently_used(
+                db,
+                user_id,
+                pattern_category_slug=pattern_category_slug,
+                pattern_id=pattern_id,
+                pattern_delivery_url=pattern_delivery_url,
+                pattern_opacity=pattern_opacity,
+                pattern_overlay_gradient=pattern_overlay_gradient,
+            )
     except Exception:
         logger.exception(
             "recently_used_sync_failed",
@@ -213,7 +322,7 @@ async def list_recently_used_wallpapers(
         select(UserMedia)
         .where(
             UserMedia.user_id == user_id,
-            UserMedia.kind == "wallpaper",
+            UserMedia.kind.in_(("wallpaper", "pattern")),
             UserMedia.last_used_at.isnot(None),
         )
         .order_by(UserMedia.last_used_at.desc())
@@ -262,9 +371,34 @@ def serialize_user_media(
     width_px: int = 1950,
     preview_width_px: int = 200,
 ) -> dict:
-    title = (row.title or "").strip() or "Wallpaper"
+    title = (row.title or "").strip()
+    if row.kind == "pattern":
+        pid = (row.pattern_id or "").strip()
+        if not title:
+            title = pid.replace("-", " ").title() or "Pattern"
+        return {
+            "id": str(row.id),
+            "item_type": "pattern",
+            "user_id": str(row.user_id),
+            "kind": row.kind,
+            "title": title,
+            "pattern_category_slug": row.pattern_category_slug,
+            "pattern_id": row.pattern_id,
+            "pattern_delivery_url": row.pattern_delivery_url,
+            "pattern_opacity": float(row.pattern_opacity if row.pattern_opacity is not None else 1.0),
+            "pattern_overlay_gradient": normalize_pattern_overlay_gradient(
+                row.pattern_overlay_gradient
+            ),
+            "object_path": row.object_path,
+            "last_used_at": row.last_used_at.isoformat() if row.last_used_at else None,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+        }
+
+    if not title:
+        title = "Wallpaper"
     return {
         "id": str(row.id),
+        "item_type": "photo",
         "user_id": str(row.user_id),
         "kind": row.kind,
         "object_path": row.object_path,

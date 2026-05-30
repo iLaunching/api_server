@@ -97,7 +97,7 @@ async def list_recently_used_user_wallpapers(
     session: dict = Depends(get_current_session),
     db: AsyncSession = Depends(get_db),
 ):
-    """Wallpapers the user has Set recently (user R2 copies + device uploads)."""
+    """Wallpapers and patterns the user has Set recently (user R2 + overlay snapshot)."""
     user_id = session.get("user_id")
     if not user_id:
         raise HTTPException(

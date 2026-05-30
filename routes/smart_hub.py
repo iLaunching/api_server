@@ -736,6 +736,11 @@ async def update_ac_current_smart_hub_synaptic_expressive_background(
                 background_kind=bg.background_kind,
                 media_photo_id=bg.media_photo_id,
                 user_photo_id=bg.user_photo_id,
+                pattern_category_slug=bg.pattern_category_slug,
+                pattern_id=bg.pattern_id,
+                pattern_delivery_url=bg.pattern_delivery_url,
+                pattern_opacity=float(bg.pattern_opacity if bg.pattern_opacity is not None else 1.0),
+                pattern_overlay_gradient=bg.pattern_overlay_gradient,
             )
             message = "Synaptic expressive background updated"
             logger.info(

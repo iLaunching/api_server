@@ -10,7 +10,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.user_media import UserMedia
-from services.asset_patterns import fetch_pattern_svg_bytes, resolve_pattern_delivery_url
+from services.asset_patterns import resolve_pattern_delivery_url
 from services.media_catalog import fetch_catalog_object_bytes, resolve_catalog_photo
 from services.media_delivery import build_delivery_url, pick_width_bucket
 from services.media_r2 import (
@@ -233,30 +233,26 @@ async def record_pattern_recently_used(
         )
         await db.commit()
         await db.refresh(row)
-        return row
-
-    try:
-        body, content_type = await fetch_pattern_svg_bytes(delivery)
-    except Exception:
-        logger.exception(
-            "recently_used_pattern_fetch_failed",
+        logger.info(
+            "recently_used_pattern_touched",
             user_id=str(user_id),
             pattern_category_slug=slug,
             pattern_id=pid,
+            user_media_id=str(row.id),
         )
-        return None
+        return row
 
+    # Patterns stay on asset_server — recently-used rows are metadata + overlay snapshot only.
     record_id = uuid.uuid4()
     object_path = pattern_object_path(user_id, record_id)
-    await put_user_object(object_path, body, content_type)
 
     row = UserMedia(
         id=record_id,
         user_id=user_id,
         kind="pattern",
         object_path=object_path,
-        content_type=content_type,
-        byte_size=len(body),
+        content_type="application/vnd.ilaunching.pattern+json",
+        byte_size=0,
         title=title,
         source_kind="catalog",
         pattern_category_slug=slug,
@@ -270,6 +266,13 @@ async def record_pattern_recently_used(
     await db.flush()
     await db.commit()
     await db.refresh(row)
+    logger.info(
+        "recently_used_pattern_recorded",
+        user_id=str(user_id),
+        pattern_category_slug=slug,
+        pattern_id=pid,
+        user_media_id=str(row.id),
+    )
     return row
 
 

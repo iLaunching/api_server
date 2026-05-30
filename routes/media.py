@@ -2,7 +2,7 @@
 User media uploads (wallpapers) → ilaunching-user-media R2 via media server Worker.
 """
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 import uuid
@@ -15,6 +15,7 @@ from services.media_r2 import normalize_image_content_type
 from services.user_media import (
     apply_user_wallpaper_to_synaptic_background,
     create_user_wallpaper_upload,
+    list_recently_used_wallpapers,
     serialize_user_media,
 )
 
@@ -86,6 +87,31 @@ async def upload_user_wallpaper(
     return {
         "message": "Wallpaper uploaded",
         "media": serialize_user_media(row),
+    }
+
+
+@router.get("/users/me/media/wallpapers/recently-used")
+async def list_recently_used_user_wallpapers(
+    limit: int = Query(48, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    session: dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    """Wallpapers the user has Set recently (user R2 copies + device uploads)."""
+    user_id = session.get("user_id")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User ID not found in session",
+        )
+
+    uid = uuid.UUID(str(user_id))
+    rows = await list_recently_used_wallpapers(db, uid, limit=limit, offset=offset)
+    return {
+        "items": [serialize_user_media(row) for row in rows],
+        "limit": limit,
+        "offset": offset,
+        "count": len(rows),
     }
 
 

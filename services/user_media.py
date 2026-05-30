@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 
-from sqlalchemy import select
+import structlog
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.user_media import UserMedia
+from services.media_catalog import fetch_catalog_object_bytes, resolve_catalog_photo
 from services.media_delivery import build_delivery_url, pick_width_bucket
 from services.media_r2 import (
     extension_for_content_type,
@@ -15,6 +18,10 @@ from services.media_r2 import (
     put_user_object,
     wallpaper_object_path,
 )
+
+logger = structlog.get_logger()
+
+RECENTLY_USED_FEATURED_LIMIT = 16
 
 
 async def get_user_media_for_user(
@@ -33,11 +40,22 @@ def user_media_delivery_url(object_path: str, *, width_px: int = 1950) -> str:
     return build_delivery_url(object_path=object_path, lane="user", width=w, crop="fit")
 
 
+def user_media_preview_delivery_url(object_path: str, *, width_px: int = 200) -> str:
+    w = pick_width_bucket(width_px)
+    return build_delivery_url(object_path=object_path, lane="user", width=w, crop="fit")
+
+
 async def stage_user_wallpaper_upload(
     db: AsyncSession,
     user_id: uuid.UUID,
     body: bytes,
     content_type: str,
+    *,
+    title: str | None = None,
+    source_kind: str = "upload",
+    source_catalog_photo_id: str | None = None,
+    source_collection_slug: str | None = None,
+    mark_recently_used: bool = False,
 ) -> UserMedia:
     """Upload to R2 and insert user_media row (flush only — caller commits)."""
     ct = normalize_image_content_type(content_type, body)
@@ -50,6 +68,7 @@ async def stage_user_wallpaper_upload(
 
     await put_user_object(object_path, body, ct)
 
+    now = datetime.now(timezone.utc) if mark_recently_used else None
     row = UserMedia(
         id=upload_id,
         user_id=user_id,
@@ -57,6 +76,11 @@ async def stage_user_wallpaper_upload(
         object_path=object_path,
         content_type=ct,
         byte_size=len(body),
+        title=title,
+        source_kind=source_kind,
+        source_catalog_photo_id=source_catalog_photo_id,
+        source_collection_slug=source_collection_slug,
+        last_used_at=now,
     )
     db.add(row)
     await db.flush()
@@ -69,10 +93,134 @@ async def create_user_wallpaper_upload(
     body: bytes,
     content_type: str,
 ) -> UserMedia:
-    row = await stage_user_wallpaper_upload(db, user_id, body, content_type)
+    row = await stage_user_wallpaper_upload(
+        db, user_id, body, content_type, title="My photo", source_kind="library"
+    )
     await db.commit()
     await db.refresh(row)
     return row
+
+
+async def touch_wallpaper_recently_used(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    media_id: uuid.UUID,
+) -> UserMedia | None:
+    row = await get_user_media_for_user(db, media_id, user_id)
+    if row is None:
+        return None
+    now = datetime.now(timezone.utc)
+    await db.execute(
+        update(UserMedia)
+        .where(UserMedia.id == media_id, UserMedia.user_id == user_id)
+        .values(last_used_at=now, updated_at=now)
+    )
+    await db.commit()
+    await db.refresh(row)
+    return row
+
+
+async def record_catalog_wallpaper_recently_used(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    catalog_photo_id: str,
+) -> UserMedia | None:
+    resolved = await resolve_catalog_photo(catalog_photo_id)
+    if not resolved:
+        logger.warning(
+            "recently_used_catalog_photo_not_found",
+            user_id=str(user_id),
+            catalog_photo_id=catalog_photo_id,
+        )
+        return None
+
+    catalog_id = resolved["media_photo_id"]
+    existing = await db.execute(
+        select(UserMedia).where(
+            UserMedia.user_id == user_id,
+            UserMedia.source_catalog_photo_id == catalog_id,
+        )
+    )
+    row = existing.scalar_one_or_none()
+    now = datetime.now(timezone.utc)
+    if row is not None:
+        await db.execute(
+            update(UserMedia)
+            .where(UserMedia.id == row.id)
+            .values(last_used_at=now, updated_at=now)
+        )
+        await db.commit()
+        await db.refresh(row)
+        return row
+
+    try:
+        body, content_type = await fetch_catalog_object_bytes(resolved["object_path"])
+    except Exception:
+        logger.exception(
+            "recently_used_catalog_fetch_failed",
+            user_id=str(user_id),
+            catalog_photo_id=catalog_id,
+        )
+        return None
+
+    row = await stage_user_wallpaper_upload(
+        db,
+        user_id,
+        body,
+        content_type,
+        title=resolved.get("title"),
+        source_kind="catalog",
+        source_catalog_photo_id=catalog_id,
+        source_collection_slug=resolved.get("collection_slug"),
+        mark_recently_used=True,
+    )
+    await db.commit()
+    await db.refresh(row)
+    return row
+
+
+async def sync_recently_used_from_synaptic_background(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    *,
+    background_kind: str | None,
+    media_photo_id: str | None,
+    user_photo_id: uuid.UUID | None,
+) -> None:
+    try:
+        if background_kind == "media_photo" and media_photo_id:
+            await record_catalog_wallpaper_recently_used(db, user_id, media_photo_id)
+        elif background_kind == "user_photo" and user_photo_id:
+            await touch_wallpaper_recently_used(db, user_id, user_photo_id)
+    except Exception:
+        logger.exception(
+            "recently_used_sync_failed",
+            user_id=str(user_id),
+            background_kind=background_kind,
+        )
+
+
+async def list_recently_used_wallpapers(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    *,
+    limit: int = 48,
+    offset: int = 0,
+) -> list[UserMedia]:
+    limit = max(1, min(limit, 100))
+    offset = max(0, offset)
+    result = await db.execute(
+        select(UserMedia)
+        .where(
+            UserMedia.user_id == user_id,
+            UserMedia.kind == "wallpaper",
+            UserMedia.last_used_at.isnot(None),
+        )
+        .order_by(UserMedia.last_used_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    return list(result.scalars().all())
 
 
 async def apply_user_wallpaper_to_synaptic_background(
@@ -90,7 +238,9 @@ async def apply_user_wallpaper_to_synaptic_background(
     """
     from services.active_chat import update_ac_synaptic_expressive_background
 
-    row = await stage_user_wallpaper_upload(db, user_id, body, content_type)
+    row = await stage_user_wallpaper_upload(
+        db, user_id, body, content_type, title="My photo", source_kind="library"
+    )
     bg = await update_ac_synaptic_expressive_background(
         db,
         user_id,
@@ -102,10 +252,17 @@ async def apply_user_wallpaper_to_synaptic_background(
             "dim_opacity": dim_opacity,
         },
     )
+    await touch_wallpaper_recently_used(db, user_id, row.id)
     return row, bg
 
 
-def serialize_user_media(row: UserMedia, *, width_px: int = 1950) -> dict:
+def serialize_user_media(
+    row: UserMedia,
+    *,
+    width_px: int = 1950,
+    preview_width_px: int = 200,
+) -> dict:
+    title = (row.title or "").strip() or "Wallpaper"
     return {
         "id": str(row.id),
         "user_id": str(row.user_id),
@@ -113,6 +270,14 @@ def serialize_user_media(row: UserMedia, *, width_px: int = 1950) -> dict:
         "object_path": row.object_path,
         "content_type": row.content_type,
         "byte_size": row.byte_size,
+        "title": title,
+        "source_kind": row.source_kind,
+        "source_catalog_photo_id": row.source_catalog_photo_id,
+        "source_collection_slug": row.source_collection_slug,
         "delivery_url": user_media_delivery_url(row.object_path, width_px=width_px),
+        "preview_delivery_url": user_media_preview_delivery_url(
+            row.object_path, width_px=preview_width_px
+        ),
+        "last_used_at": row.last_used_at.isoformat() if row.last_used_at else None,
         "created_at": row.created_at.isoformat() if row.created_at else None,
     }

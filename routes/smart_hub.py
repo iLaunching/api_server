@@ -27,6 +27,7 @@ from services.active_chat import (
     update_ac_synaptic_expressive_background,
 )
 from services.synaptic_background_payload import build_synaptic_expressive_background_payload
+from services.user_media import sync_recently_used_from_synaptic_background
 from services.user_navigation_sync import (
     first_matrix_id_for_hub,
     set_navigation_context,
@@ -728,6 +729,13 @@ async def update_ac_current_smart_hub_synaptic_expressive_background(
                 db,
                 uuid.UUID(str(user_id)),
                 payload,
+            )
+            await sync_recently_used_from_synaptic_background(
+                db,
+                uuid.UUID(str(user_id)),
+                background_kind=bg.background_kind,
+                media_photo_id=bg.media_photo_id,
+                user_photo_id=bg.user_photo_id,
             )
             message = "Synaptic expressive background updated"
             logger.info(

@@ -52,6 +52,7 @@ async def resolve_catalog_photo(
 
     target_id = photo_id.strip()
     for collection in manifest.get("collections") or []:
+        collection_slug = collection.get("slug") or ""
         for item in collection.get("items") or []:
             if item.get("id") != target_id:
                 continue
@@ -69,5 +70,26 @@ async def resolve_catalog_photo(
                 "media_photo_id": target_id,
                 "object_path": object_path,
                 "delivery_url": delivery_url,
+                "title": (item.get("title") or target_id).strip(),
+                "collection_slug": collection_slug,
             }
     return None
+
+
+async def fetch_catalog_object_bytes(object_path: str) -> tuple[bytes, str]:
+    """Fetch catalog master bytes via media worker raw URL."""
+    path = object_path.lstrip("/")
+    base = media_base_url("catalog").rstrip("/")
+    url = f"{base}/raw/catalog/{path}"
+
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        response = await client.get(url)
+        if response.status_code >= 400:
+            logger.error(
+                "catalog_object_fetch_failed",
+                status=response.status_code,
+                object_path=path,
+            )
+            response.raise_for_status()
+        content_type = (response.headers.get("content-type") or "image/webp").split(";")[0]
+        return response.content, content_type.strip().lower()

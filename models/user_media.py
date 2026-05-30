@@ -25,6 +25,11 @@ class UserMedia(Base):
     byte_size = Column(Integer, nullable=False, default=0)
     width = Column(Integer, nullable=True)
     height = Column(Integer, nullable=True)
+    title = Column(Text, nullable=True)
+    source_kind = Column(String, nullable=False, default="upload")
+    source_catalog_photo_id = Column(Text, nullable=True)
+    source_collection_slug = Column(Text, nullable=True)
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(
         DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow

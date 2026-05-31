@@ -11,6 +11,7 @@ from models.synaptic_expressive_experience import SynapticExpressiveExperience
 from services.media_catalog import resolve_catalog_photo
 from services.user_media import get_user_media_for_user, user_media_delivery_url
 
+from services.experience_theme_config import ensure_appearance_typography
 from services.pattern_overlay import normalize_pattern_overlay_gradient
 
 async def build_synaptic_expressive_experience_payload(
@@ -39,7 +40,7 @@ async def build_synaptic_expressive_experience_payload(
         "pan_x": float(experience.pan_x or 0.0),
         "pan_y": float(experience.pan_y or 0.0),
         "dim_opacity": float(experience.dim_opacity or 0.0),
-        "appearance_config": experience.appearance_config,
+        "appearance_config": ensure_appearance_typography(experience.appearance_config or {}),
         "theme_config": experience.theme_config,
         "appearance_palette_id": experience.appearance_palette_id,
         "theme_palette_id": experience.theme_palette_id,

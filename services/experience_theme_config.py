@@ -6,6 +6,25 @@ from typing import Any
 
 from models.database_models import ThemeConfig
 
+DEFAULT_FONT_FAMILY_ID = "work-sans"
+
+
+def ensure_appearance_typography(appearance_config: dict[str, Any]) -> dict[str, Any]:
+    """Ensure appearance_config.typography.family_id is set (default Work Sans)."""
+    config = dict(appearance_config or {})
+    typo = config.get("typography")
+    if not isinstance(typo, dict):
+        typo = {}
+    else:
+        typo = dict(typo)
+    family_id = typo.get("family_id")
+    if not isinstance(family_id, str) or not family_id.strip():
+        typo["family_id"] = DEFAULT_FONT_FAMILY_ID
+    else:
+        typo["family_id"] = family_id.strip()
+    config["typography"] = typo
+    return config
+
 
 def theme_config_to_appearance_config(
     theme_config: ThemeConfig,
@@ -50,7 +69,9 @@ def theme_config_to_appearance_config(
             if value is not None:
                 payload[key] = value
 
-    return {k: v for k, v in payload.items() if v is not None and v != ""}
+    return ensure_appearance_typography(
+        {k: v for k, v in payload.items() if v is not None and v != ""}
+    )
 
 
 def palette_catalog_entry_to_experience_patch(entry: dict[str, Any]) -> dict[str, Any]:
@@ -59,7 +80,9 @@ def palette_catalog_entry_to_experience_patch(entry: dict[str, Any]) -> dict[str
     if kind == "appearance":
         return {
             "appearance_palette_id": entry.get("id"),
-            "appearance_config": entry.get("appearance_config") or {},
+            "appearance_config": ensure_appearance_typography(
+                entry.get("appearance_config") or {}
+            ),
         }
     if kind == "theme":
         return {

@@ -327,71 +327,121 @@ async def update_ac_synaptic_expressive_experience(
         payload["pan_y"] = 0
         payload["dim_opacity"] = 0
 
-    update_result = await db.execute(
-        text(
-            """
-            UPDATE "synapticExpressiveExperience"
-            SET
-              background_kind = :background_kind,
-              solid_hex = :solid_hex,
-              pattern_category_slug = :pattern_category_slug,
-              pattern_id = :pattern_id,
-              pattern_delivery_url = :pattern_delivery_url,
-              pattern_opacity = :pattern_opacity,
-              pattern_overlay_gradient = CAST(:pattern_overlay_gradient AS jsonb),
-              media_photo_id = :media_photo_id,
-              user_photo_id = :user_photo_id,
-              pan_x = :pan_x,
-              pan_y = :pan_y,
-              dim_opacity = :dim_opacity,
-              appearance_config = COALESCE(
-                CAST(:appearance_config AS jsonb),
-                appearance_config
-              ),
-              theme_config = COALESCE(
-                CAST(:theme_config AS jsonb),
-                theme_config
-              ),
-              appearance_palette_id = COALESCE(:appearance_palette_id, appearance_palette_id),
-              theme_palette_id = COALESCE(:theme_palette_id, theme_palette_id),
-              updated_at = NOW()
-            WHERE id = :id
-              AND active_chat_id = :active_chat_id
-            """
-        ),
-        {
-            "id": experience.id,
-            "active_chat_id": active_chat.id,
-            "background_kind": payload.get("background_kind", experience.background_kind),
-            "solid_hex": payload.get("solid_hex"),
-            "pattern_category_slug": payload.get("pattern_category_slug"),
-            "pattern_id": payload.get("pattern_id"),
-            "pattern_delivery_url": payload.get("pattern_delivery_url"),
-            "pattern_opacity": payload.get("pattern_opacity", 1),
-            "pattern_overlay_gradient": (
-                json.dumps(payload.get("pattern_overlay_gradient"))
-                if payload.get("pattern_overlay_gradient") is not None
-                else None
-            ),
-            "media_photo_id": payload.get("media_photo_id"),
-            "user_photo_id": payload.get("user_photo_id"),
-            "pan_x": payload.get("pan_x", 0),
-            "pan_y": payload.get("pan_y", 0),
-            "dim_opacity": payload.get("dim_opacity", 0),
-            "appearance_config": (
-                json.dumps(payload.get("appearance_config"))
-                if payload.get("appearance_config") is not None
-                else None
-            ),
-            "theme_config": (
-                json.dumps(payload.get("theme_config"))
-                if payload.get("theme_config") is not None
-                else None
-            ),
-            "appearance_palette_id": payload.get("appearance_palette_id"),
-            "theme_palette_id": payload.get("theme_palette_id"),
-        },
+    palette_only_patch = kind is None and any(
+        payload.get(key) is not None
+        for key in (
+            "appearance_palette_id",
+            "appearance_config",
+            "theme_palette_id",
+            "theme_config",
+        )
     )
+
+    if palette_only_patch:
+        update_result = await db.execute(
+            text(
+                """
+                UPDATE "synapticExpressiveExperience"
+                SET
+                  appearance_config = COALESCE(
+                    CAST(:appearance_config AS jsonb),
+                    appearance_config
+                  ),
+                  theme_config = COALESCE(
+                    CAST(:theme_config AS jsonb),
+                    theme_config
+                  ),
+                  appearance_palette_id = COALESCE(:appearance_palette_id, appearance_palette_id),
+                  theme_palette_id = COALESCE(:theme_palette_id, theme_palette_id),
+                  updated_at = NOW()
+                WHERE id = :id
+                  AND active_chat_id = :active_chat_id
+                """
+            ),
+            {
+                "id": experience.id,
+                "active_chat_id": active_chat.id,
+                "appearance_config": (
+                    json.dumps(payload.get("appearance_config"))
+                    if payload.get("appearance_config") is not None
+                    else None
+                ),
+                "theme_config": (
+                    json.dumps(payload.get("theme_config"))
+                    if payload.get("theme_config") is not None
+                    else None
+                ),
+                "appearance_palette_id": payload.get("appearance_palette_id"),
+                "theme_palette_id": payload.get("theme_palette_id"),
+            },
+        )
+    else:
+        update_result = await db.execute(
+            text(
+                """
+                UPDATE "synapticExpressiveExperience"
+                SET
+                  background_kind = :background_kind,
+                  solid_hex = :solid_hex,
+                  pattern_category_slug = :pattern_category_slug,
+                  pattern_id = :pattern_id,
+                  pattern_delivery_url = :pattern_delivery_url,
+                  pattern_opacity = :pattern_opacity,
+                  pattern_overlay_gradient = CAST(:pattern_overlay_gradient AS jsonb),
+                  media_photo_id = :media_photo_id,
+                  user_photo_id = :user_photo_id,
+                  pan_x = :pan_x,
+                  pan_y = :pan_y,
+                  dim_opacity = :dim_opacity,
+                  appearance_config = COALESCE(
+                    CAST(:appearance_config AS jsonb),
+                    appearance_config
+                  ),
+                  theme_config = COALESCE(
+                    CAST(:theme_config AS jsonb),
+                    theme_config
+                  ),
+                  appearance_palette_id = COALESCE(:appearance_palette_id, appearance_palette_id),
+                  theme_palette_id = COALESCE(:theme_palette_id, theme_palette_id),
+                  updated_at = NOW()
+                WHERE id = :id
+                  AND active_chat_id = :active_chat_id
+                """
+            ),
+            {
+                "id": experience.id,
+                "active_chat_id": active_chat.id,
+                "background_kind": payload.get("background_kind", experience.background_kind),
+                "solid_hex": payload.get("solid_hex"),
+                "pattern_category_slug": payload.get("pattern_category_slug"),
+                "pattern_id": payload.get("pattern_id"),
+                "pattern_delivery_url": payload.get("pattern_delivery_url"),
+                "pattern_opacity": payload.get("pattern_opacity", 1),
+                "pattern_overlay_gradient": (
+                    json.dumps(payload.get("pattern_overlay_gradient"))
+                    if payload.get("pattern_overlay_gradient") is not None
+                    else None
+                ),
+                "media_photo_id": payload.get("media_photo_id"),
+                "user_photo_id": payload.get("user_photo_id"),
+                "pan_x": payload.get("pan_x", 0),
+                "pan_y": payload.get("pan_y", 0),
+                "dim_opacity": payload.get("dim_opacity", 0),
+                "appearance_config": (
+                    json.dumps(payload.get("appearance_config"))
+                    if payload.get("appearance_config") is not None
+                    else None
+                ),
+                "theme_config": (
+                    json.dumps(payload.get("theme_config"))
+                    if payload.get("theme_config") is not None
+                    else None
+                ),
+                "appearance_palette_id": payload.get("appearance_palette_id"),
+                "theme_palette_id": payload.get("theme_palette_id"),
+            },
+        )
+
     if update_result.rowcount == 0:
         logger.error(
             "synaptic_expressive_experience_update_missed",

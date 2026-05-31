@@ -105,6 +105,85 @@ def combined_experience_patch(
     return patch
 
 
+_APPEARANCE_CONFIG_TO_THEME: dict[str, str | tuple[str, ...]] = {
+    "background_color": "background",
+    "text_color": ("text", "appearance_text_color"),
+    "menu_color": "menu",
+    "border_line_color": "border",
+    "header_overlay_color": "header_overlay",
+    "user_button_color": "user_button_color",
+    "user_button_hover": "user_button_hover",
+    "user_button_icon": "user_button_icon",
+    "title_menu_color_light": "title_menu_color_light",
+    "border_line_color_light": "border_line_color_light",
+    "global_button_hover": "global_button_hover",
+    "chat_bk_1": "chat_bk_1",
+    "prompt_bk": "prompt_bk",
+    "prompt_text_color": "prompt_text_color",
+    "ai_acknowledge_text_color": "ai_acknowledge_text_color",
+    "danger_button_solid_color": "danger_button_solid_color",
+    "danger_button_hover": "danger_button_hover",
+    "danger_tone_bk": "danger_tone_bk",
+    "danger_tone_border": "danger_tone_border",
+    "danger_tone_text": "danger_tone_text",
+    "danger_bk_light_color": "danger_bk_light_color",
+    "danger_bk_solid_color": "danger_bk_solid_color",
+    "danger_bk_solid_text_color": "danger_bk_solid_text_color",
+    "line_grid_color": "line_grid_color",
+    "dotted_grid_color": "dotted_grid_color",
+}
+
+_THEME_CONFIG_TO_THEME: dict[str, str | tuple[str, ...]] = {
+    "solid_color": ("solid_color", "header_background"),
+    "bg_opacity": "bg_opacity",
+    "menu_bg_opacity": "menu_bg_opacity",
+    "toneButton_bk_color": "tone_button_bk_color",
+    "toneButton_text_color": "tone_button_text_color",
+    "toneButton_border_color": "tone_button_border_color",
+    "button_bk_color": "button_bk_color",
+    "button_text_color": "button_text_color",
+    "button_hover_color": "button_hover_color",
+}
+
+
+def _apply_config_map(
+    theme_data: dict[str, Any],
+    config: dict[str, Any],
+    key_map: dict[str, str | tuple[str, ...]],
+) -> dict[str, Any]:
+    merged = dict(theme_data)
+    for source_key, target in key_map.items():
+        value = config.get(source_key)
+        if value is None or value == "":
+            continue
+        targets = (target,) if isinstance(target, str) else target
+        for theme_key in targets:
+            merged[theme_key] = value
+    return merged
+
+
+def apply_experience_config_to_theme_data(
+    theme_data: dict[str, Any] | None,
+    *,
+    appearance_config: dict[str, Any] | None = None,
+    theme_config: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """
+    Overlay synapticExpressiveExperience.appearance_config / theme_config onto hub theme JSON.
+    Experience columns win over legacy activeChat option_values when present.
+    """
+    base: dict[str, Any] = dict(theme_data or {})
+    if appearance_config:
+        normalized = ensure_appearance_typography(appearance_config)
+        base = _apply_config_map(base, normalized, _APPEARANCE_CONFIG_TO_THEME)
+        feedback = normalized.get("feedback_indicator_bk")
+        if isinstance(feedback, str) and feedback.strip():
+            base["feedback_indicator_bk"] = feedback.strip()
+    if theme_config and isinstance(theme_config, dict):
+        base = _apply_config_map(base, theme_config, _THEME_CONFIG_TO_THEME)
+    return base or None
+
+
 def theme_option_to_experience_theme_config(
     theme_config: ThemeConfig,
     *,

@@ -26,6 +26,7 @@ from services.active_chat import (
     reset_ac_synaptic_expressive_experience,
     update_ac_synaptic_expressive_experience,
 )
+from services.experience_theme_config import apply_experience_config_to_theme_data
 from services.synaptic_expressive_experience_payload import build_synaptic_expressive_experience_payload
 from services.user_media import sync_recently_used_from_synaptic_experience
 from services.user_navigation_sync import (
@@ -341,6 +342,12 @@ async def _get_smart_hub_dashboard(
             )
 
         theme_data = _build_theme_data_from_appearance_itheme(appearance_ov, itheme_ov)
+        if syn_experience_payload:
+            theme_data = apply_experience_config_to_theme_data(
+                theme_data,
+                appearance_config=syn_experience_payload.get("appearance_config"),
+                theme_config=syn_experience_payload.get("theme_config"),
+            )
 
         # Step 4: Build smart hub data from navigation relation (no search!)
         smart_hub_data = None

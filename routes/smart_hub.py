@@ -708,10 +708,19 @@ async def update_ac_current_smart_hub_synaptic_expressive_experience(
             )
             message = "Synaptic expressive experience reset to defaults"
         else:
-            if not request.background_kind:
+            has_palette_patch = (
+                request.appearance_palette_id is not None
+                or request.appearance_config is not None
+                or request.theme_palette_id is not None
+                or request.theme_config is not None
+            )
+            if not request.background_kind and not has_palette_patch:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="background_kind is required unless reset_to_defaults is true",
+                    detail=(
+                        "background_kind is required unless reset_to_defaults is true "
+                        "or appearance/theme palette fields are set"
+                    ),
                 )
             payload = request.model_dump(
                 exclude={"reset_to_defaults"},

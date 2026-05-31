@@ -344,6 +344,16 @@ async def update_ac_synaptic_expressive_experience(
               pan_x = :pan_x,
               pan_y = :pan_y,
               dim_opacity = :dim_opacity,
+              appearance_config = COALESCE(
+                CAST(:appearance_config AS jsonb),
+                appearance_config
+              ),
+              theme_config = COALESCE(
+                CAST(:theme_config AS jsonb),
+                theme_config
+              ),
+              appearance_palette_id = COALESCE(:appearance_palette_id, appearance_palette_id),
+              theme_palette_id = COALESCE(:theme_palette_id, theme_palette_id),
               updated_at = NOW()
             WHERE id = :id
               AND active_chat_id = :active_chat_id
@@ -368,6 +378,18 @@ async def update_ac_synaptic_expressive_experience(
             "pan_x": payload.get("pan_x", 0),
             "pan_y": payload.get("pan_y", 0),
             "dim_opacity": payload.get("dim_opacity", 0),
+            "appearance_config": (
+                json.dumps(payload.get("appearance_config"))
+                if payload.get("appearance_config") is not None
+                else None
+            ),
+            "theme_config": (
+                json.dumps(payload.get("theme_config"))
+                if payload.get("theme_config") is not None
+                else None
+            ),
+            "appearance_palette_id": payload.get("appearance_palette_id"),
+            "theme_palette_id": payload.get("theme_palette_id"),
         },
     )
     if update_result.rowcount == 0:

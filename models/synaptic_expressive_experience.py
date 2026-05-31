@@ -1,8 +1,7 @@
 """
 Synaptic expressive experience for an Active Chat.
 
-Single-row store for the hub's applied experience: wallpaper/background today,
-with appearance and iTheme JSON planned on the same row.
+Single-row store for the hub's applied experience: wallpaper, appearance_config, and theme_config.
 """
 
 from datetime import datetime
@@ -50,6 +49,12 @@ class SynapticExpressiveExperience(Base):
     pan_x = Column(Float, nullable=False, default=0.0)
     pan_y = Column(Float, nullable=False, default=0.0)
     dim_opacity = Column(Float, nullable=False, default=0.0)
+
+    appearance_config = Column(JSONB, nullable=True)
+    theme_config = Column(JSONB, nullable=True)
+
+    appearance_palette_id = Column(Text, nullable=True)
+    theme_palette_id = Column(Text, nullable=True)
 
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(

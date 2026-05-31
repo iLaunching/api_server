@@ -49,6 +49,9 @@ MIGRATIONS = [
     "052_user_media_patterns_recently_used.sql",
     "053_rename_synaptic_background_to_synatic_experience.sql",
     "054_fix_synatic_to_synaptic_expressive_experience.sql",
+    "055_add_appearance_itheme_config_to_synaptic_experience.sql",
+    "056_rename_itheme_config_to_theme_config.sql",
+    "057_add_experience_palette_trace_ids.sql",
 ]
 
 async def run_all_migrations():

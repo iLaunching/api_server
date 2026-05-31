@@ -62,6 +62,10 @@ class UpdateAcSynapticExpressiveExperienceRequest(BaseModel):
     pan_x: Optional[float] = None
     pan_y: Optional[float] = None
     dim_opacity: Optional[float] = None
+    appearance_config: Optional[Dict[str, Any]] = None
+    theme_config: Optional[Dict[str, Any]] = None
+    appearance_palette_id: Optional[str] = None
+    theme_palette_id: Optional[str] = None
 
 # ============================================
 # Current User Profile & Smart Hub

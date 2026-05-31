@@ -19,7 +19,7 @@ from sqlalchemy.orm import selectinload
 
 from models.active_chat import ActiveChat
 from models.database_models import SmartHub, UserNavigation
-from models.synaptic_expressive_background import SynapticExpressiveBackground
+from models.synaptic_expressive_experience import SynapticExpressiveExperience
 from models.user import UserProfile
 from services.user_media import get_user_media_for_user
 
@@ -47,9 +47,9 @@ async def ensure_active_chat_for_hub(
     db.add(active_chat)
     await db.flush()
 
-    # Ensure a 1:1 synaptic expressive background row exists and link from activeChat.
+    # Ensure a 1:1 synaptic expressive experience row exists and link from activeChat.
     # Use the shared helper to keep behavior idempotent and consistent.
-    await ensure_synaptic_background_for_active_chat(db, user_id, active_chat)
+    await ensure_synaptic_expressive_experience_for_active_chat(db, user_id, active_chat)
 
     hub.activeChat = active_chat.id
     await db.commit()
@@ -154,83 +154,85 @@ async def update_ac_active_chat_itheme(
     return active_chat.id
 
 
-async def ensure_synaptic_background_for_active_chat(
+async def ensure_synaptic_expressive_experience_for_active_chat(
     db: AsyncSession,
     user_id: uuid.UUID,
     active_chat: ActiveChat,
-) -> SynapticExpressiveBackground:
+) -> SynapticExpressiveExperience:
     """
-    Ensure the activeChat row has a linked synapticExpressiveBackground row and FK pointer.
+    Ensure the activeChat row has a linked synapticExpressiveExperience row and FK pointer.
     Always resolve by active_chat_id first (source of truth); sync FK when mismatched.
     """
     result = await db.execute(
-        select(SynapticExpressiveBackground).where(
-            SynapticExpressiveBackground.active_chat_id == active_chat.id
+        select(SynapticExpressiveExperience).where(
+            SynapticExpressiveExperience.active_chat_id == active_chat.id
         )
     )
     existing_by_chat = result.scalar_one_or_none()
     if existing_by_chat is not None:
-        if active_chat.synaptic_expressive_background_id != existing_by_chat.id:
+        if active_chat.synaptic_expressive_experience_id != existing_by_chat.id:
             await db.execute(
                 text(
                     """
                     UPDATE "activeChat"
-                    SET synaptic_expressive_background_id = :bg_id, updated_at = NOW()
+                    SET synaptic_expressive_experience_id = :experience_id, updated_at = NOW()
                     WHERE id = :active_chat_id
                     """
                 ),
                 {
-                    "bg_id": existing_by_chat.id,
+                    "experience_id": existing_by_chat.id,
                     "active_chat_id": active_chat.id,
                 },
             )
             await db.flush()
-            active_chat.synaptic_expressive_background_id = existing_by_chat.id
+            active_chat.synaptic_expressive_experience_id = existing_by_chat.id
         return existing_by_chat
 
-    fk_id = getattr(active_chat, "synaptic_expressive_background_id", None)
+    fk_id = getattr(active_chat, "synaptic_expressive_experience_id", None)
     if fk_id:
         result = await db.execute(
-            select(SynapticExpressiveBackground).where(
-                SynapticExpressiveBackground.id == fk_id
+            select(SynapticExpressiveExperience).where(
+                SynapticExpressiveExperience.id == fk_id
             )
         )
         by_fk = result.scalar_one_or_none()
         if by_fk is not None and by_fk.active_chat_id == active_chat.id:
             return by_fk
 
-    syn_bg = SynapticExpressiveBackground(user_id=user_id, active_chat_id=active_chat.id)
-    db.add(syn_bg)
+    experience = SynapticExpressiveExperience(user_id=user_id, active_chat_id=active_chat.id)
+    db.add(experience)
     await db.flush()
     await db.execute(
         text(
             """
             UPDATE "activeChat"
-            SET synaptic_expressive_background_id = :bg_id, updated_at = NOW()
+            SET synaptic_expressive_experience_id = :experience_id, updated_at = NOW()
             WHERE id = :active_chat_id
             """
         ),
-        {"bg_id": syn_bg.id, "active_chat_id": active_chat.id},
+        {"experience_id": experience.id, "active_chat_id": active_chat.id},
     )
     await db.flush()
-    active_chat.synaptic_expressive_background_id = syn_bg.id
-    return syn_bg
+    active_chat.synaptic_expressive_experience_id = experience.id
+    return experience
 
 
-async def reset_ac_synaptic_expressive_background(
+async def reset_ac_synaptic_expressive_experience(
     db: AsyncSession,
     user_id: uuid.UUID,
-) -> SynapticExpressiveBackground:
+) -> SynapticExpressiveExperience:
     """
-    Reset synapticExpressiveBackground to factory defaults for the AC hub's activeChat.
+    Reset synapticExpressiveExperience to factory defaults for the AC hub's activeChat.
     """
     _, active_chat = await get_ac_current_hub_active_chat(db, user_id)
-    bg = await ensure_synaptic_background_for_active_chat(db, user_id, active_chat)
+    experience = await ensure_synaptic_expressive_experience_for_active_chat(
+        db, user_id, active_chat
+    )
 
     await db.execute(
         text(
             """
-            UPDATE "synapticExpressiveBackground"
+            UPDATE "synapticExpressiveExperience"
             SET
               background_kind = 'solid',
               solid_hex = NULL,
@@ -248,24 +250,26 @@ async def reset_ac_synaptic_expressive_background(
             WHERE id = :id
             """
         ),
-        {"id": bg.id},
+        {"id": experience.id},
     )
     await db.commit()
-    await db.refresh(bg)
-    return bg
+    await db.refresh(experience)
+    return experience
 
 
-async def update_ac_synaptic_expressive_background(
+async def update_ac_synaptic_expressive_experience(
     db: AsyncSession,
     user_id: uuid.UUID,
     payload: dict,
-) -> SynapticExpressiveBackground:
+) -> SynapticExpressiveExperience:
     """
-    Update the synapticExpressiveBackground row for the user's current Active Chat hub.
+    Update the synapticExpressiveExperience row for the user's current Active Chat hub.
     Payload is a validated dict from the route layer.
     """
     _, active_chat = await get_ac_current_hub_active_chat(db, user_id)
-    bg = await ensure_synaptic_background_for_active_chat(db, user_id, active_chat)
+    experience = await ensure_synaptic_expressive_experience_for_active_chat(
+        db, user_id, active_chat
+    )
 
     # Normalize kind-specific clearing to avoid stale fields.
     kind = payload.get("background_kind")
@@ -326,7 +330,7 @@ async def update_ac_synaptic_expressive_background(
     update_result = await db.execute(
         text(
             """
-            UPDATE "synapticExpressiveBackground"
+            UPDATE "synapticExpressiveExperience"
             SET
               background_kind = :background_kind,
               solid_hex = :solid_hex,
@@ -346,9 +350,9 @@ async def update_ac_synaptic_expressive_background(
             """
         ),
         {
-            "id": bg.id,
+            "id": experience.id,
             "active_chat_id": active_chat.id,
-            "background_kind": payload.get("background_kind", bg.background_kind),
+            "background_kind": payload.get("background_kind", experience.background_kind),
             "solid_hex": payload.get("solid_hex"),
             "pattern_category_slug": payload.get("pattern_category_slug"),
             "pattern_id": payload.get("pattern_id"),
@@ -368,20 +372,20 @@ async def update_ac_synaptic_expressive_background(
     )
     if update_result.rowcount == 0:
         logger.error(
-            "synaptic_expressive_background_update_missed",
-            synaptic_id=bg.id,
+            "synaptic_expressive_experience_update_missed",
+            experience_id=experience.id,
             active_chat_id=active_chat.id,
             background_kind=payload.get("background_kind"),
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Synaptic expressive background row could not be updated",
+            detail="Synaptic expressive experience row could not be updated",
         )
     await db.commit()
 
     result = await db.execute(
-        select(SynapticExpressiveBackground).where(
-            SynapticExpressiveBackground.id == bg.id
+        select(SynapticExpressiveExperience).where(
+            SynapticExpressiveExperience.id == experience.id
         )
     )
     return result.scalar_one()

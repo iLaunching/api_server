@@ -23,11 +23,11 @@ from services.active_chat import (
     ensure_active_chat_for_hub,
     update_ac_active_chat_appearance,
     update_ac_active_chat_itheme,
-    reset_ac_synaptic_expressive_background,
-    update_ac_synaptic_expressive_background,
+    reset_ac_synaptic_expressive_experience,
+    update_ac_synaptic_expressive_experience,
 )
-from services.synaptic_background_payload import build_synaptic_expressive_background_payload
-from services.user_media import sync_recently_used_from_synaptic_background
+from services.synaptic_expressive_experience_payload import build_synaptic_expressive_experience_payload
+from services.user_media import sync_recently_used_from_synaptic_experience
 from services.user_navigation_sync import (
     first_matrix_id_for_hub,
     set_navigation_context,
@@ -48,7 +48,7 @@ class UpdateSmartHubDetailsRequest(BaseModel):
     description: Optional[str] = None
 
 
-class UpdateAcSynapticExpressiveBackgroundRequest(BaseModel):
+class UpdateAcSynapticExpressiveExperienceRequest(BaseModel):
     reset_to_defaults: bool = False
     background_kind: Optional[str] = None  # solid | pattern | media_photo | user_photo
     solid_hex: Optional[str] = None
@@ -252,7 +252,7 @@ async def _get_smart_hub_dashboard(
                 selectinload(UserProfile.navigation)
                 .selectinload(nav_hub_rel)
                 .selectinload(SmartHub.active_chat)
-                .selectinload(ActiveChat.synaptic_expressive_background),
+                .selectinload(ActiveChat.synaptic_expressive_experience),
             )
             .where(UserProfile.user_id == user_id)
         )
@@ -313,20 +313,20 @@ async def _get_smart_hub_dashboard(
         theme_hub = (
             navigation.ac_current_smart_hub if active_chat else navigation.current_smart_hub
         ) if navigation else None
-        syn_bg_payload = None
-        syn_bg_id = None
+        syn_experience_payload = None
+        syn_experience_id = None
         if active_chat and theme_hub and theme_hub.active_chat:
             ac = theme_hub.active_chat
             if ac.appearance:
                 appearance_ov = ac.appearance
             if ac.itheme:
                 itheme_ov = ac.itheme
-            if getattr(ac, "synaptic_expressive_background", None) is not None:
-                bg = ac.synaptic_expressive_background
-                syn_bg_id = getattr(ac, "synaptic_expressive_background_id", None)
-                syn_bg_payload = await build_synaptic_expressive_background_payload(
+            if getattr(ac, "synaptic_expressive_experience", None) is not None:
+                experience = ac.synaptic_expressive_experience
+                syn_experience_id = getattr(ac, "synaptic_expressive_experience_id", None)
+                syn_experience_payload = await build_synaptic_expressive_experience_payload(
                     db,
-                    bg,
+                    experience,
                     user_id=uuid.UUID(str(user_id)),
                 )
             logger.info(
@@ -504,8 +504,8 @@ async def _get_smart_hub_dashboard(
                 }
                 if itheme_ov
                 else None,
-                "synaptic_expressive_background_id": syn_bg_id,
-                "synaptic_expressive_background": syn_bg_payload,
+                "synaptic_expressive_experience_id": syn_experience_id,
+                "synaptic_expressive_experience": syn_experience_payload,
             }
 
         return {
@@ -681,14 +681,14 @@ async def update_ac_current_smart_hub_itheme(
         )
 
 
-@router.patch("/users/me/ac-current-smart-hub/synaptic-expressive-background")
-async def update_ac_current_smart_hub_synaptic_expressive_background(
-    request: UpdateAcSynapticExpressiveBackgroundRequest,
+@router.patch("/users/me/ac-current-smart-hub/synaptic-expressive-experience")
+async def update_ac_current_smart_hub_synaptic_expressive_experience(
+    request: UpdateAcSynapticExpressiveExperienceRequest,
     session: Dict = Depends(get_current_session),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    iOS Active Chat — persist SynapticExpressiveBackground settings for the AC hub.
+    iOS Active Chat — persist SynapticExpressiveExperience settings for the AC hub.
     Called when the user taps Set in wallpaper/pattern preview sheets.
     """
     user_id = session.get("user_id")
@@ -699,10 +699,10 @@ async def update_ac_current_smart_hub_synaptic_expressive_background(
         )
     try:
         if request.reset_to_defaults:
-            bg = await reset_ac_synaptic_expressive_background(
+            experience = await reset_ac_synaptic_expressive_experience(
                 db, uuid.UUID(str(user_id))
             )
-            message = "Synaptic expressive background reset to defaults"
+            message = "Synaptic expressive experience reset to defaults"
         else:
             if not request.background_kind:
                 raise HTTPException(
@@ -725,56 +725,58 @@ async def update_ac_current_smart_hub_synaptic_expressive_background(
                 payload["pattern_opacity"] = float(
                     request.pattern_opacity if request.pattern_opacity is not None else 1.0
                 )
-            bg = await update_ac_synaptic_expressive_background(
+            experience = await update_ac_synaptic_expressive_experience(
                 db,
                 uuid.UUID(str(user_id)),
                 payload,
             )
-            await sync_recently_used_from_synaptic_background(
+            await sync_recently_used_from_synaptic_experience(
                 db,
                 uuid.UUID(str(user_id)),
-                background_kind=bg.background_kind,
-                media_photo_id=bg.media_photo_id,
-                user_photo_id=bg.user_photo_id,
-                pattern_category_slug=bg.pattern_category_slug,
-                pattern_id=bg.pattern_id,
-                pattern_delivery_url=bg.pattern_delivery_url,
-                pattern_opacity=float(bg.pattern_opacity if bg.pattern_opacity is not None else 1.0),
-                pattern_overlay_gradient=bg.pattern_overlay_gradient,
+                background_kind=experience.background_kind,
+                media_photo_id=experience.media_photo_id,
+                user_photo_id=experience.user_photo_id,
+                pattern_category_slug=experience.pattern_category_slug,
+                pattern_id=experience.pattern_id,
+                pattern_delivery_url=experience.pattern_delivery_url,
+                pattern_opacity=float(
+                    experience.pattern_opacity if experience.pattern_opacity is not None else 1.0
+                ),
+                pattern_overlay_gradient=experience.pattern_overlay_gradient,
             )
-            message = "Synaptic expressive background updated"
+            message = "Synaptic expressive experience updated"
             logger.info(
-                "synaptic_expressive_background_updated",
+                "synaptic_expressive_experience_updated",
                 user_id=user_id,
-                background_kind=bg.background_kind,
-                user_photo_id=str(bg.user_photo_id) if bg.user_photo_id else None,
-                media_photo_id=bg.media_photo_id,
-                pan_x=bg.pan_x,
-                pan_y=bg.pan_y,
-                dim_opacity=bg.dim_opacity,
+                background_kind=experience.background_kind,
+                user_photo_id=str(experience.user_photo_id) if experience.user_photo_id else None,
+                media_photo_id=experience.media_photo_id,
+                pan_x=experience.pan_x,
+                pan_y=experience.pan_y,
+                dim_opacity=experience.dim_opacity,
             )
-        synaptic_payload = await build_synaptic_expressive_background_payload(
+        experience_payload = await build_synaptic_expressive_experience_payload(
             db,
-            bg,
+            experience,
             user_id=uuid.UUID(str(user_id)),
         )
         return {
             "message": message,
-            "synaptic_expressive_background_id": bg.id,
-            "synaptic_expressive_background": synaptic_payload,
+            "synaptic_expressive_experience_id": experience.id,
+            "synaptic_expressive_experience": experience_payload,
         }
     except HTTPException:
         raise
     except Exception as e:
         await db.rollback()
         logger.error(
-            "failed to update synaptic expressive background",
+            "failed to update synaptic expressive experience",
             user_id=user_id,
             error=str(e),
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to update synaptic expressive background: {str(e)}",
+            detail=f"Failed to update synaptic expressive experience: {str(e)}",
         )
 
 

@@ -10,10 +10,10 @@ import uuid
 from auth.middleware import get_current_session
 from config.database import get_db
 from config.media_settings import media_upload_status
-from services.synaptic_background_payload import build_synaptic_expressive_background_payload
+from services.synaptic_expressive_experience_payload import build_synaptic_expressive_experience_payload
 from services.media_r2 import normalize_image_content_type
 from services.user_media import (
-    apply_user_wallpaper_to_synaptic_background,
+    apply_user_wallpaper_to_synaptic_experience,
     create_user_wallpaper_upload,
     list_recently_used_wallpapers,
     serialize_user_media,
@@ -115,8 +115,8 @@ async def list_recently_used_user_wallpapers(
     }
 
 
-@router.post("/users/me/media/wallpapers/apply-to-background")
-async def apply_user_wallpaper_to_background(
+@router.post("/users/me/media/wallpapers/apply-to-experience")
+async def apply_user_wallpaper_to_experience(
     file: UploadFile = File(...),
     pan_x: float = Form(0),
     pan_y: float = Form(0),
@@ -125,8 +125,8 @@ async def apply_user_wallpaper_to_background(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Upload a user wallpaper and persist it on synapticExpressiveBackground in one request.
-    iOS device-library Set uses this so R2, user_media, and synaptic row stay in sync.
+    Upload a user wallpaper and persist it on synapticExpressiveExperience in one request.
+    iOS device-library Set uses this so R2, user_media, and experience row stay in sync.
     """
     user_id = session.get("user_id")
     if not user_id:
@@ -144,7 +144,7 @@ async def apply_user_wallpaper_to_background(
         content_type = normalize_image_content_type(
             file.content_type, body, filename=file.filename
         )
-        row, bg = await apply_user_wallpaper_to_synaptic_background(
+        row, experience = await apply_user_wallpaper_to_synaptic_experience(
             db,
             uid,
             body,
@@ -168,29 +168,31 @@ async def apply_user_wallpaper_to_background(
         raise
     except Exception as exc:
         await db.rollback()
-        logger.exception("user_wallpaper_apply_to_background_failed")
+        logger.exception("user_wallpaper_apply_to_experience_failed")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Failed to apply wallpaper to background",
+            detail="Failed to apply wallpaper to experience",
         ) from exc
 
     media_payload = serialize_user_media(row)
-    synaptic_payload = await build_synaptic_expressive_background_payload(db, bg, user_id=uid)
-    if bg.background_kind == "user_photo" and not synaptic_payload.get(
+    experience_payload = await build_synaptic_expressive_experience_payload(
+        db, experience, user_id=uid
+    )
+    if experience.background_kind == "user_photo" and not experience_payload.get(
         "user_photo_delivery_url"
     ):
-        synaptic_payload["user_photo_delivery_url"] = media_payload.get("delivery_url")
+        experience_payload["user_photo_delivery_url"] = media_payload.get("delivery_url")
     logger.info(
-        "user_wallpaper_applied_to_synaptic_background",
+        "user_wallpaper_applied_to_synaptic_experience",
         user_id=str(user_id),
         user_media_id=str(row.id),
-        synaptic_id=bg.id,
-        active_chat_id=bg.active_chat_id,
-        pan_x=bg.pan_x,
-        pan_y=bg.pan_y,
+        experience_id=experience.id,
+        active_chat_id=experience.active_chat_id,
+        pan_x=experience.pan_x,
+        pan_y=experience.pan_y,
     )
     return {
-        "message": "Wallpaper applied to synaptic expressive background",
+        "message": "Wallpaper applied to synaptic expressive experience",
         "media": media_payload,
-        "synaptic_expressive_background": synaptic_payload,
+        "synaptic_expressive_experience": experience_payload,
     }

@@ -1,8 +1,8 @@
 """
-Synaptic expressive background configuration for an Active Chat.
+Synaptic expressive experience for an Active Chat.
 
-This table is designed for fast load of all wallpaper/background values in a single row,
-and for future per-pattern editing (overlay gradients, transparency, etc.).
+Single-row store for the hub's applied experience: wallpaper/background today,
+with appearance and iTheme JSON planned on the same row.
 """
 
 from datetime import datetime
@@ -15,8 +15,8 @@ from sqlalchemy.sql.sqltypes import Float
 from config.database import Base
 
 
-class SynapticExpressiveBackground(Base):
-    __tablename__ = "synapticExpressiveBackground"
+class SynapticExpressiveExperience(Base):
+    __tablename__ = "synapticExpressiveExperience"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 
@@ -59,5 +59,4 @@ class SynapticExpressiveBackground(Base):
     active_chat = relationship("ActiveChat", foreign_keys=[active_chat_id], uselist=False)
 
     def __repr__(self):
-        return f"<SynapticExpressiveBackground(id={self.id}, active_chat_id={self.active_chat_id})>"
-
+        return f"<SynapticExpressiveExperience(id={self.id}, active_chat_id={self.active_chat_id})>"

@@ -276,7 +276,7 @@ async def record_pattern_recently_used(
     return row
 
 
-async def sync_recently_used_from_synaptic_background(
+async def sync_recently_used_from_synaptic_experience(
     db: AsyncSession,
     user_id: uuid.UUID,
     *,
@@ -335,7 +335,7 @@ async def list_recently_used_wallpapers(
     return list(result.scalars().all())
 
 
-async def apply_user_wallpaper_to_synaptic_background(
+async def apply_user_wallpaper_to_synaptic_experience(
     db: AsyncSession,
     user_id: uuid.UUID,
     body: bytes,
@@ -346,14 +346,14 @@ async def apply_user_wallpaper_to_synaptic_background(
     dim_opacity: float,
 ):
     """
-    Upload user wallpaper and update synapticExpressiveBackground in one DB transaction.
+    Upload user wallpaper and update synapticExpressiveExperience in one DB transaction.
     """
-    from services.active_chat import update_ac_synaptic_expressive_background
+    from services.active_chat import update_ac_synaptic_expressive_experience
 
     row = await stage_user_wallpaper_upload(
         db, user_id, body, content_type, title="My photo", source_kind="library"
     )
-    bg = await update_ac_synaptic_expressive_background(
+    experience = await update_ac_synaptic_expressive_experience(
         db,
         user_id,
         {
@@ -365,7 +365,7 @@ async def apply_user_wallpaper_to_synaptic_background(
         },
     )
     await touch_wallpaper_recently_used(db, user_id, row.id)
-    return row, bg
+    return row, experience
 
 
 def serialize_user_media(

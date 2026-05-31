@@ -36,9 +36,9 @@ class ActiveChat(Base):
         index=True,
         default=10,
     )
-    synaptic_expressive_background_id = Column(
+    synaptic_expressive_experience_id = Column(
         Integer,
-        ForeignKey('synapticExpressiveBackground.id', ondelete="SET NULL"),
+        ForeignKey('synapticExpressiveExperience.id', ondelete="SET NULL"),
         nullable=True,
         unique=True,
         index=True,
@@ -56,9 +56,9 @@ class ActiveChat(Base):
         back_populates="active_chat",
     )
 
-    synaptic_expressive_background = relationship(
-        "SynapticExpressiveBackground",
-        foreign_keys=[synaptic_expressive_background_id],
+    synaptic_expressive_experience = relationship(
+        "SynapticExpressiveExperience",
+        foreign_keys=[synaptic_expressive_experience_id],
         uselist=False,
     )
 

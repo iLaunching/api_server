@@ -47,6 +47,8 @@ MIGRATIONS = [
     "050_create_user_media.sql",
     "051_user_media_recently_used.sql",
     "052_user_media_patterns_recently_used.sql",
+    "053_rename_synaptic_background_to_synatic_experience.sql",
+    "054_fix_synatic_to_synaptic_expressive_experience.sql",
 ]
 
 async def run_all_migrations():

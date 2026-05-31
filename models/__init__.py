@@ -7,7 +7,7 @@ Models package - imports all models to ensure they're registered with SQLAlchemy
 from models.user import UserProfile, DnaProfile
 from models.phone_identity import PhoneIdentity
 from models.active_chat import ActiveChat
-from models.synaptic_expressive_background import SynapticExpressiveBackground
+from models.synaptic_expressive_experience import SynapticExpressiveExperience
 from models.database_models import (
     SmartHub,
     SmartMatrix,
@@ -30,7 +30,7 @@ __all__ = [
     'DnaProfile',
     'PhoneIdentity',
     'ActiveChat',
-    'SynapticExpressiveBackground',
+    'SynapticExpressiveExperience',
     'ThemeConfig',
     'SmartHub',
     'SmartMatrix',

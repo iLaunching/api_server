@@ -53,6 +53,7 @@ MIGRATIONS = [
     "056_rename_itheme_config_to_theme_config.sql",
     "057_add_experience_palette_trace_ids.sql",
     "058_wallpaper_color_catalog_and_none_kind.sql",
+    "059_wallpaper_color_hex_palette_ids.sql",
 ]
 
 async def run_all_migrations():

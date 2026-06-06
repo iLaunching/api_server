@@ -33,9 +33,12 @@ class SynapticExpressiveExperience(Base):
         index=True,
     )
 
-    background_kind = Column(String, nullable=False, default="solid")
+    background_kind = Column(String, nullable=False, default="none")
 
     solid_hex = Column(Text, nullable=True)
+
+    wallpaper_color_palette_id = Column(Text, nullable=True)
+    background_config = Column(JSONB, nullable=True)
 
     pattern_category_slug = Column(Text, nullable=True)
     pattern_id = Column(Text, nullable=True)

@@ -51,8 +51,10 @@ class UpdateSmartHubDetailsRequest(BaseModel):
 
 class UpdateAcSynapticExpressiveExperienceRequest(BaseModel):
     reset_to_defaults: bool = False
-    background_kind: Optional[str] = None  # solid | pattern | media_photo | user_photo
+    background_kind: Optional[str] = None  # none | solid | pattern | media_photo | user_photo
     solid_hex: Optional[str] = None
+    wallpaper_color_palette_id: Optional[str] = None
+    background_config: Optional[Dict[str, Any]] = None
     pattern_category_slug: Optional[str] = None
     pattern_id: Optional[str] = None
     pattern_delivery_url: Optional[str] = None

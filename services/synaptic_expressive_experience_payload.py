@@ -26,6 +26,8 @@ async def build_synaptic_expressive_experience_payload(
         "user_id": str(experience.user_id),
         "background_kind": experience.background_kind,
         "solid_hex": experience.solid_hex,
+        "wallpaper_color_palette_id": experience.wallpaper_color_palette_id,
+        "background_config": experience.background_config,
         "pattern_category_slug": experience.pattern_category_slug,
         "pattern_id": experience.pattern_id,
         "pattern_delivery_url": experience.pattern_delivery_url,

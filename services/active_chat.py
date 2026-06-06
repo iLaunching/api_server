@@ -234,8 +234,10 @@ async def reset_ac_synaptic_expressive_experience(
             """
             UPDATE "synapticExpressiveExperience"
             SET
-              background_kind = 'solid',
+              background_kind = 'none',
               solid_hex = NULL,
+              wallpaper_color_palette_id = NULL,
+              background_config = NULL,
               pattern_category_slug = NULL,
               pattern_id = NULL,
               pattern_delivery_url = NULL,
@@ -274,10 +276,16 @@ async def update_ac_synaptic_expressive_experience(
     # Normalize kind-specific clearing to avoid stale fields.
     kind = payload.get("background_kind")
     if kind == "pattern":
+        payload["solid_hex"] = None
+        payload["wallpaper_color_palette_id"] = None
+        payload["background_config"] = None
         payload["media_photo_id"] = None
         payload["user_photo_id"] = None
         payload["dim_opacity"] = 0
     elif kind == "media_photo":
+        payload["solid_hex"] = None
+        payload["wallpaper_color_palette_id"] = None
+        payload["background_config"] = None
         payload["pattern_category_slug"] = None
         payload["pattern_id"] = None
         payload["pattern_delivery_url"] = None
@@ -285,6 +293,9 @@ async def update_ac_synaptic_expressive_experience(
         payload["pattern_overlay_gradient"] = None
         payload["user_photo_id"] = None
     elif kind == "user_photo":
+        payload["solid_hex"] = None
+        payload["wallpaper_color_palette_id"] = None
+        payload["background_config"] = None
         payload["pattern_category_slug"] = None
         payload["pattern_id"] = None
         payload["pattern_delivery_url"] = None
@@ -315,7 +326,36 @@ async def update_ac_synaptic_expressive_experience(
                 detail="user_photo_id not found for this user",
             )
         payload["user_photo_id"] = photo_uuid
+    elif kind == "none":
+        payload["solid_hex"] = None
+        payload["wallpaper_color_palette_id"] = None
+        payload["background_config"] = None
+        payload["pattern_category_slug"] = None
+        payload["pattern_id"] = None
+        payload["pattern_delivery_url"] = None
+        payload["pattern_opacity"] = 1
+        payload["pattern_overlay_gradient"] = None
+        payload["media_photo_id"] = None
+        payload["user_photo_id"] = None
+        payload["pan_x"] = 0
+        payload["pan_y"] = 0
+        payload["dim_opacity"] = 0
     elif kind == "solid":
+        palette_id = payload.get("wallpaper_color_palette_id")
+        bg_config = payload.get("background_config")
+        if not palette_id or not bg_config:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "wallpaper_color_palette_id and background_config are required "
+                    "when background_kind is solid"
+                ),
+            )
+        fill = bg_config.get("fill") if isinstance(bg_config, dict) else None
+        if isinstance(fill, dict) and fill.get("hex"):
+            payload["solid_hex"] = str(fill["hex"]).strip()
+        else:
+            payload["solid_hex"] = None
         payload["pattern_category_slug"] = None
         payload["pattern_id"] = None
         payload["pattern_delivery_url"] = None
@@ -383,6 +423,8 @@ async def update_ac_synaptic_expressive_experience(
                 SET
                   background_kind = :background_kind,
                   solid_hex = :solid_hex,
+                  wallpaper_color_palette_id = :wallpaper_color_palette_id,
+                  background_config = CAST(:background_config AS jsonb),
                   pattern_category_slug = :pattern_category_slug,
                   pattern_id = :pattern_id,
                   pattern_delivery_url = :pattern_delivery_url,
@@ -413,6 +455,12 @@ async def update_ac_synaptic_expressive_experience(
                 "active_chat_id": active_chat.id,
                 "background_kind": payload.get("background_kind", experience.background_kind),
                 "solid_hex": payload.get("solid_hex"),
+                "wallpaper_color_palette_id": payload.get("wallpaper_color_palette_id"),
+                "background_config": (
+                    json.dumps(payload.get("background_config"))
+                    if payload.get("background_config") is not None
+                    else None
+                ),
                 "pattern_category_slug": payload.get("pattern_category_slug"),
                 "pattern_id": payload.get("pattern_id"),
                 "pattern_delivery_url": payload.get("pattern_delivery_url"),

@@ -8,7 +8,13 @@ from typing import Any
 import httpx
 import structlog
 
-from services.media_delivery import build_delivery_url, media_base_url, pick_width_bucket
+from services.media_delivery import (
+    build_delivery_url,
+    media_base_url,
+    normalize_catalog_object_path,
+    normalize_catalog_delivery_url,
+    pick_width_bucket,
+)
 
 logger = structlog.get_logger()
 
@@ -59,12 +65,15 @@ async def resolve_catalog_photo(
             object_path = item.get("object_path")
             if not object_path:
                 return None
+            object_path = normalize_catalog_object_path(object_path)
             w = pick_width_bucket(width_px)
-            delivery_url = build_delivery_url(
-                object_path=object_path,
-                lane="catalog",
-                width=w,
-                crop="fit",
+            delivery_url = normalize_catalog_delivery_url(
+                build_delivery_url(
+                    object_path=object_path,
+                    lane="catalog",
+                    width=w,
+                    crop="fit",
+                )
             )
             return {
                 "media_photo_id": target_id,

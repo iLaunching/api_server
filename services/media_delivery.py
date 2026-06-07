@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 from typing import Literal
 
 from config.media_settings import get_media_settings
@@ -10,6 +11,30 @@ from config.media_settings import get_media_settings
 DIMENSION_STEP = 50
 MAX_DIMENSION = 4096
 DEFAULT_QUALITY = 82
+
+_LEGACY_CATALOG_PHOTO = re.compile(r"^images/wallpapers/[^/]+/(.+)$")
+_LEGACY_CATALOG_PHOTO_URL = re.compile(
+    r"(/catalog/images/wallpapers/)[^/]+/([^/?#]+)"
+)
+
+
+def normalize_catalog_object_path(object_path: str) -> str:
+    """Map legacy nested wallpaper paths to flat catalog/photos/ layout."""
+    path = (object_path or "").lstrip("/")
+    if path.startswith("photos/"):
+        return path
+    match = _LEGACY_CATALOG_PHOTO.match(path)
+    if match:
+        return f"photos/{match.group(1)}"
+    base = path.split("/")[-1]
+    if base:
+        return f"photos/{base}"
+    return path
+
+
+def normalize_catalog_delivery_url(url: str) -> str:
+    """Rewrite legacy nested catalog paths inside a delivery URL."""
+    return _LEGACY_CATALOG_PHOTO_URL.sub(r"/catalog/photos/\2", url or "")
 
 
 def snap_dimension(display_px: int) -> int:
@@ -53,6 +78,8 @@ def build_delivery_url(
     raw: bool = False,
 ) -> str:
     path = object_path.lstrip("/")
+    if lane == "catalog":
+        path = normalize_catalog_object_path(path)
     lane_seg = "catalog" if lane == "catalog" else "raw"
     base = media_base_url(lane)
 

@@ -28,7 +28,7 @@ async def fetch_wallpaper_manifest() -> dict[str, Any] | None:
         return _manifest_cache["data"]
 
     base = media_base_url("catalog")
-    url = f"{base}/catalog/v1/wallpaper-collections"
+    url = f"{base}/catalog/v1/media-collections"
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:

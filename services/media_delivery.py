@@ -18,10 +18,27 @@ _LEGACY_CATALOG_PHOTO_URL = re.compile(
 )
 
 
-def normalize_catalog_object_path(object_path: str) -> str:
-    """Map legacy nested wallpaper paths to flat catalog/photos/ layout."""
+def infer_catalog_asset_type(object_path: str, declared_type: str | None = None) -> str:
+    if declared_type:
+        normalized = declared_type.strip().lower()
+        if normalized in {"photo", "illustration", "vector"}:
+            return normalized
+        if normalized.endswith("s"):
+            singular = normalized[:-1]
+            if singular in {"photo", "illustration", "vector"}:
+                return singular
     path = (object_path or "").lstrip("/")
-    if path.startswith("photos/"):
+    if path.startswith("illustrations/"):
+        return "illustration"
+    if path.startswith("vectors/"):
+        return "vector"
+    return "photo"
+
+
+def normalize_catalog_object_path(object_path: str) -> str:
+    """Preserve format-first layout; rewrite legacy nested wallpaper paths."""
+    path = (object_path or "").lstrip("/")
+    if path.startswith(("photos/", "illustrations/", "vectors/", "videos/")):
         return path
     match = _LEGACY_CATALOG_PHOTO.match(path)
     if match:

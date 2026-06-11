@@ -17,6 +17,7 @@ from services.user_media import (
     create_user_wallpaper_upload,
     list_recently_used_wallpapers,
     serialize_user_media,
+    serialize_user_media_list,
 )
 
 logger = structlog.get_logger()
@@ -107,7 +108,7 @@ async def list_recently_used_user_wallpapers(
 
     uid = uuid.UUID(str(user_id))
     rows = await list_recently_used_wallpapers(db, uid, limit=limit, offset=offset)
-    items = [await serialize_user_media(row) for row in rows]
+    items = await serialize_user_media_list(rows)
     return {
         "items": items,
         "limit": limit,

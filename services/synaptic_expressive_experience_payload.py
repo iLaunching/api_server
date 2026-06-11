@@ -8,7 +8,10 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.synaptic_expressive_experience import SynapticExpressiveExperience
-from services.media_catalog import resolve_catalog_photo
+from services.media_catalog import (
+    catalog_delivery_urls_from_object_path,
+    resolve_catalog_photo,
+)
 from services.user_media import get_user_media_for_user, user_media_delivery_url
 
 from services.experience_theme_config import ensure_appearance_typography
@@ -63,11 +66,17 @@ async def build_synaptic_expressive_experience_payload(
         if media:
             payload["user_photo_object_path"] = media.object_path
             catalog_id = (media.source_catalog_photo_id or "").strip()
+            stored_path = (media.source_catalog_object_path or "").strip()
             if media.source_kind == "catalog" and catalog_id:
-                resolved = await resolve_catalog_photo(catalog_id)
-                if resolved:
-                    payload["media_photo_id"] = catalog_id
-                    payload["user_photo_delivery_url"] = resolved.get("delivery_url")
+                payload["media_photo_id"] = catalog_id
+                if stored_path:
+                    urls = catalog_delivery_urls_from_object_path(stored_path)
+                    if urls:
+                        payload["user_photo_delivery_url"] = urls[0]
+                if not payload.get("user_photo_delivery_url"):
+                    resolved = await resolve_catalog_photo(catalog_id)
+                    if resolved:
+                        payload["user_photo_delivery_url"] = resolved.get("delivery_url")
             if not payload.get("user_photo_delivery_url"):
                 payload["user_photo_delivery_url"] = user_media_delivery_url(
                     media.object_path

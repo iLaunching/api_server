@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import datetime, timezone
 
@@ -11,7 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.user_media import UserMedia
 from services.asset_patterns import resolve_pattern_delivery_url
-from services.media_catalog import resolve_catalog_photo
+from services.media_catalog import (
+    catalog_delivery_urls_from_item,
+    catalog_delivery_urls_from_object_path,
+    prefetch_catalog_assets_by_ids,
+    resolve_catalog_photo,
+)
 from services.media_delivery import build_delivery_url, pick_width_bucket
 from services.media_r2 import (
     extension_for_content_type,
@@ -148,10 +154,13 @@ async def record_catalog_wallpaper_recently_used(
     row = existing.scalar_one_or_none()
     now = datetime.now(timezone.utc)
     if row is not None:
+        touch_values: dict = {"last_used_at": now, "updated_at": now}
+        if not (row.source_catalog_object_path or "").strip() and resolved.get("object_path"):
+            touch_values["source_catalog_object_path"] = resolved["object_path"]
         await db.execute(
             update(UserMedia)
             .where(UserMedia.id == row.id)
-            .values(last_used_at=now, updated_at=now)
+            .values(**touch_values)
         )
         await db.commit()
         await db.refresh(row)
@@ -169,6 +178,7 @@ async def record_catalog_wallpaper_recently_used(
         title=resolved.get("title"),
         source_kind="catalog",
         source_catalog_photo_id=catalog_id,
+        source_catalog_object_path=resolved.get("object_path"),
         source_collection_slug=resolved.get("collection_slug"),
         last_used_at=now,
     )
@@ -376,20 +386,34 @@ async def _catalog_wallpaper_delivery_urls(
     *,
     width_px: int,
     preview_width_px: int,
+    catalog_object_path: str | None = None,
+    catalog_assets: dict[str, dict] | None = None,
 ) -> tuple[str, str] | None:
-    cover = await resolve_catalog_photo(
-        catalog_photo_id, width_px=width_px, crop="fit"
+    stored_path = (catalog_object_path or "").strip()
+    if stored_path:
+        return catalog_delivery_urls_from_object_path(
+            stored_path,
+            width_px=width_px,
+            preview_width_px=preview_width_px,
+        )
+
+    item = (catalog_assets or {}).get(catalog_photo_id)
+    if item is None:
+        item = await resolve_catalog_photo(catalog_photo_id, width_px=width_px)
+        if not item:
+            return None
+        return catalog_delivery_urls_from_object_path(
+            item["object_path"],
+            asset_type=item.get("type"),
+            width_px=width_px,
+            preview_width_px=preview_width_px,
+        )
+
+    return catalog_delivery_urls_from_item(
+        item,
+        width_px=width_px,
+        preview_width_px=preview_width_px,
     )
-    preview = await resolve_catalog_photo(
-        catalog_photo_id, width_px=preview_width_px, crop="fill"
-    )
-    if not cover or not preview:
-        return None
-    delivery = cover.get("delivery_url")
-    preview_delivery = preview.get("delivery_url")
-    if not delivery or not preview_delivery:
-        return None
-    return delivery, preview_delivery
 
 
 async def serialize_user_media(
@@ -397,6 +421,7 @@ async def serialize_user_media(
     *,
     width_px: int = 1950,
     preview_width_px: int = 200,
+    catalog_assets: dict[str, dict] | None = None,
 ) -> dict:
     title = (row.title or "").strip()
     if row.kind == "pattern":
@@ -434,6 +459,8 @@ async def serialize_user_media(
             catalog_id,
             width_px=width_px,
             preview_width_px=preview_width_px,
+            catalog_object_path=row.source_catalog_object_path,
+            catalog_assets=catalog_assets,
         )
         if catalog_urls:
             delivery_url, preview_delivery_url = catalog_urls
@@ -449,9 +476,42 @@ async def serialize_user_media(
         "title": title,
         "source_kind": row.source_kind,
         "source_catalog_photo_id": row.source_catalog_photo_id,
+        "source_catalog_object_path": row.source_catalog_object_path,
         "source_collection_slug": row.source_collection_slug,
         "delivery_url": delivery_url,
         "preview_delivery_url": preview_delivery_url,
         "last_used_at": row.last_used_at.isoformat() if row.last_used_at else None,
         "created_at": row.created_at.isoformat() if row.created_at else None,
     }
+
+
+async def serialize_user_media_list(
+    rows: list[UserMedia],
+    *,
+    width_px: int = 1950,
+    preview_width_px: int = 200,
+) -> list[dict]:
+    """Batch-serialize recently-used rows with one parallel catalog prefetch."""
+    missing_ids: list[str] = []
+    for row in rows:
+        if row.kind != "wallpaper" or row.source_kind != "catalog":
+            continue
+        catalog_id = (row.source_catalog_photo_id or "").strip()
+        if not catalog_id:
+            continue
+        if (row.source_catalog_object_path or "").strip():
+            continue
+        missing_ids.append(catalog_id)
+
+    catalog_assets = await prefetch_catalog_assets_by_ids(missing_ids)
+    return await asyncio.gather(
+        *(
+            serialize_user_media(
+                row,
+                width_px=width_px,
+                preview_width_px=preview_width_px,
+                catalog_assets=catalog_assets,
+            )
+            for row in rows
+        )
+    )

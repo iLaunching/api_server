@@ -28,6 +28,7 @@ class UserMedia(Base):
     title = Column(Text, nullable=True)
     source_kind = Column(String, nullable=False, default="upload")
     source_catalog_photo_id = Column(Text, nullable=True)
+    source_catalog_object_path = Column(Text, nullable=True)
     source_collection_slug = Column(Text, nullable=True)
     last_used_at = Column(DateTime(timezone=True), nullable=True)
     pattern_category_slug = Column(Text, nullable=True)

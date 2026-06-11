@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from typing import Any
 
@@ -20,6 +21,7 @@ from services.media_delivery import (
 logger = structlog.get_logger()
 
 _manifest_cache: dict[str, Any] = {"expires_at": 0.0, "data": None}
+_asset_by_id_cache: dict[str, tuple[float, dict[str, Any] | None]] = {}
 _CACHE_TTL_SECONDS = 300
 
 
@@ -106,24 +108,112 @@ async def fetch_catalog_asset_by_id(
     if not photo_id or not photo_id.strip():
         return None
 
+    key = photo_id.strip()
+    now = time.time()
+    cached = _asset_by_id_cache.get(key)
+    if cached and cached[0] > now:
+        return cached[1]
+
     base = media_base_url("catalog")
     w = pick_width_bucket(width_px)
-    url = f"{base}/catalog/v1/assets/{photo_id.strip()}"
+    url = f"{base}/catalog/v1/assets/{key}"
     params = {"cover_w": w, "preview_w": min(w, 650)}
 
+    item: dict[str, Any] | None = None
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(url, params=params, headers={"Accept": "application/json"})
             if response.status_code == 404:
-                return None
-            if response.status_code >= 400:
-                logger.warning("catalog_asset_fetch_failed", status=response.status_code, photo_id=photo_id)
-                return None
-            payload = response.json()
-            return payload.get("item")
+                item = None
+            elif response.status_code >= 400:
+                logger.warning(
+                    "catalog_asset_fetch_failed",
+                    status=response.status_code,
+                    photo_id=photo_id,
+                )
+                item = cached[1] if cached else None
+            else:
+                payload = response.json()
+                item = payload.get("item")
     except Exception as exc:
         logger.warning("catalog_asset_fetch_error", error=str(exc), photo_id=photo_id)
+        item = cached[1] if cached else None
+
+    _asset_by_id_cache[key] = (now + _CACHE_TTL_SECONDS, item)
+    return item
+
+
+def catalog_delivery_urls_from_object_path(
+    object_path: str,
+    *,
+    asset_type: str | None = None,
+    width_px: int = 1950,
+    preview_width_px: int = 200,
+) -> tuple[str, str] | None:
+    """Build cover + preview delivery URLs locally (no worker HTTP)."""
+    path = normalize_catalog_object_path(object_path)
+    if not path:
         return None
+    at = infer_catalog_asset_type(path, asset_type)
+    is_vector = at == "vector"
+    cover_w = pick_width_bucket(width_px)
+    preview_w = pick_width_bucket(preview_width_px)
+    if is_vector:
+        cover = build_delivery_url(
+            object_path=path, lane="catalog", raw=True
+        )
+        preview = cover
+    else:
+        cover = build_delivery_url(
+            object_path=path,
+            lane="catalog",
+            width=cover_w,
+            crop="fit",
+        )
+        preview = build_delivery_url(
+            object_path=path,
+            lane="catalog",
+            width=preview_w,
+            crop="fill",
+        )
+    return (
+        normalize_catalog_delivery_url(cover),
+        normalize_catalog_delivery_url(preview),
+    )
+
+
+def catalog_delivery_urls_from_item(
+    item: dict[str, Any],
+    *,
+    width_px: int = 1950,
+    preview_width_px: int = 200,
+) -> tuple[str, str] | None:
+    object_path = item.get("object_path")
+    if not object_path:
+        return None
+    return catalog_delivery_urls_from_object_path(
+        str(object_path),
+        asset_type=item.get("type"),
+        width_px=width_px,
+        preview_width_px=preview_width_px,
+    )
+
+
+async def prefetch_catalog_assets_by_ids(
+    photo_ids: list[str],
+) -> dict[str, dict[str, Any]]:
+    """Parallel fetch for unique catalog ids (cached)."""
+    unique = list(dict.fromkeys(id.strip() for id in photo_ids if id and id.strip()))
+    if not unique:
+        return {}
+    results = await asyncio.gather(
+        *(fetch_catalog_asset_by_id(photo_id) for photo_id in unique)
+    )
+    return {
+        photo_id: item
+        for photo_id, item in zip(unique, results)
+        if item is not None
+    }
 
 
 async def resolve_catalog_photo(
@@ -145,16 +235,15 @@ async def resolve_catalog_photo(
 
     object_path = normalize_catalog_object_path(object_path)
     asset_type = infer_catalog_asset_type(object_path, item.get("type"))
-    w = pick_width_bucket(width_px)
-    delivery_url = normalize_catalog_delivery_url(
-        build_delivery_url(
-            object_path=object_path,
-            lane="catalog",
-            width=w,
-            crop=crop,
-            raw=asset_type == "vector",
-        )
+    urls = catalog_delivery_urls_from_object_path(
+        object_path,
+        asset_type=asset_type,
+        width_px=width_px,
+        preview_width_px=min(width_px, 650),
     )
+    if not urls:
+        return None
+    delivery_url = urls[0]
     return {
         "media_photo_id": photo_id.strip(),
         "object_path": object_path,

@@ -86,7 +86,7 @@ async def upload_user_wallpaper(
 
     return {
         "message": "Wallpaper uploaded",
-        "media": serialize_user_media(row),
+        "media": await serialize_user_media(row),
     }
 
 
@@ -107,8 +107,9 @@ async def list_recently_used_user_wallpapers(
 
     uid = uuid.UUID(str(user_id))
     rows = await list_recently_used_wallpapers(db, uid, limit=limit, offset=offset)
+    items = [await serialize_user_media(row) for row in rows]
     return {
-        "items": [serialize_user_media(row) for row in rows],
+        "items": items,
         "limit": limit,
         "offset": offset,
         "count": len(rows),
@@ -174,7 +175,7 @@ async def apply_user_wallpaper_to_experience(
             detail="Failed to apply wallpaper to experience",
         ) from exc
 
-    media_payload = serialize_user_media(row)
+    media_payload = await serialize_user_media(row)
     experience_payload = await build_synaptic_expressive_experience_payload(
         db, experience, user_id=uid
     )

@@ -130,6 +130,7 @@ async def resolve_catalog_photo(
     photo_id: str,
     *,
     width_px: int = 1950,
+    crop: str = "fit",
 ) -> dict[str, str] | None:
     if not photo_id or not photo_id.strip():
         return None
@@ -150,7 +151,7 @@ async def resolve_catalog_photo(
             object_path=object_path,
             lane="catalog",
             width=w,
-            crop="fit",
+            crop=crop,
             raw=asset_type == "vector",
         )
     )

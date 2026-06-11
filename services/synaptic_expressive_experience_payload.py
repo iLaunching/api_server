@@ -62,6 +62,15 @@ async def build_synaptic_expressive_experience_payload(
         media = await get_user_media_for_user(db, experience.user_photo_id, user_id)
         if media:
             payload["user_photo_object_path"] = media.object_path
-            payload["user_photo_delivery_url"] = user_media_delivery_url(media.object_path)
+            catalog_id = (media.source_catalog_photo_id or "").strip()
+            if media.source_kind == "catalog" and catalog_id:
+                resolved = await resolve_catalog_photo(catalog_id)
+                if resolved:
+                    payload["media_photo_id"] = catalog_id
+                    payload["user_photo_delivery_url"] = resolved.get("delivery_url")
+            if not payload.get("user_photo_delivery_url"):
+                payload["user_photo_delivery_url"] = user_media_delivery_url(
+                    media.object_path
+                )
 
     return payload

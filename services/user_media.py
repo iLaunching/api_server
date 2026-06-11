@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.user_media import UserMedia
 from services.asset_patterns import resolve_pattern_delivery_url
-from services.media_catalog import fetch_catalog_object_bytes, resolve_catalog_photo
+from services.media_catalog import resolve_catalog_photo
 from services.media_delivery import build_delivery_url, pick_width_bucket
 from services.media_r2 import (
     extension_for_content_type,
@@ -128,6 +128,7 @@ async def record_catalog_wallpaper_recently_used(
     user_id: uuid.UUID,
     catalog_photo_id: str,
 ) -> UserMedia | None:
+    """Track catalog wallpaper in recently-used without copying bytes to user R2."""
     resolved = await resolve_catalog_photo(catalog_photo_id)
     if not resolved:
         logger.warning(
@@ -156,29 +157,31 @@ async def record_catalog_wallpaper_recently_used(
         await db.refresh(row)
         return row
 
-    try:
-        body, content_type = await fetch_catalog_object_bytes(resolved["object_path"])
-    except Exception:
-        logger.exception(
-            "recently_used_catalog_fetch_failed",
-            user_id=str(user_id),
-            catalog_photo_id=catalog_id,
-        )
-        return None
-
-    row = await stage_user_wallpaper_upload(
-        db,
-        user_id,
-        body,
-        content_type,
+    record_id = uuid.uuid4()
+    object_path = wallpaper_object_path(user_id, record_id, "webp")
+    row = UserMedia(
+        id=record_id,
+        user_id=user_id,
+        kind="wallpaper",
+        object_path=object_path,
+        content_type="image/webp",
+        byte_size=0,
         title=resolved.get("title"),
         source_kind="catalog",
         source_catalog_photo_id=catalog_id,
         source_collection_slug=resolved.get("collection_slug"),
-        mark_recently_used=True,
+        last_used_at=now,
     )
+    db.add(row)
+    await db.flush()
     await db.commit()
     await db.refresh(row)
+    logger.info(
+        "recently_used_catalog_recorded",
+        user_id=str(user_id),
+        catalog_photo_id=catalog_id,
+        user_media_id=str(row.id),
+    )
     return row
 
 
@@ -368,7 +371,28 @@ async def apply_user_wallpaper_to_synaptic_experience(
     return row, experience
 
 
-def serialize_user_media(
+async def _catalog_wallpaper_delivery_urls(
+    catalog_photo_id: str,
+    *,
+    width_px: int,
+    preview_width_px: int,
+) -> tuple[str, str] | None:
+    cover = await resolve_catalog_photo(
+        catalog_photo_id, width_px=width_px, crop="fit"
+    )
+    preview = await resolve_catalog_photo(
+        catalog_photo_id, width_px=preview_width_px, crop="fill"
+    )
+    if not cover or not preview:
+        return None
+    delivery = cover.get("delivery_url")
+    preview_delivery = preview.get("delivery_url")
+    if not delivery or not preview_delivery:
+        return None
+    return delivery, preview_delivery
+
+
+async def serialize_user_media(
     row: UserMedia,
     *,
     width_px: int = 1950,
@@ -399,6 +423,21 @@ def serialize_user_media(
 
     if not title:
         title = "Wallpaper"
+
+    delivery_url = user_media_delivery_url(row.object_path, width_px=width_px)
+    preview_delivery_url = user_media_preview_delivery_url(
+        row.object_path, width_px=preview_width_px
+    )
+    catalog_id = (row.source_catalog_photo_id or "").strip()
+    if row.source_kind == "catalog" and catalog_id:
+        catalog_urls = await _catalog_wallpaper_delivery_urls(
+            catalog_id,
+            width_px=width_px,
+            preview_width_px=preview_width_px,
+        )
+        if catalog_urls:
+            delivery_url, preview_delivery_url = catalog_urls
+
     return {
         "id": str(row.id),
         "item_type": "photo",
@@ -411,10 +450,8 @@ def serialize_user_media(
         "source_kind": row.source_kind,
         "source_catalog_photo_id": row.source_catalog_photo_id,
         "source_collection_slug": row.source_collection_slug,
-        "delivery_url": user_media_delivery_url(row.object_path, width_px=width_px),
-        "preview_delivery_url": user_media_preview_delivery_url(
-            row.object_path, width_px=preview_width_px
-        ),
+        "delivery_url": delivery_url,
+        "preview_delivery_url": preview_delivery_url,
         "last_used_at": row.last_used_at.isoformat() if row.last_used_at else None,
         "created_at": row.created_at.isoformat() if row.created_at else None,
     }

@@ -24,6 +24,7 @@ from services.media_r2 import (
     normalize_image_content_type,
     pattern_object_path,
     put_user_object,
+    wallpaper_color_object_path,
     wallpaper_object_path,
 )
 from services.pattern_overlay import normalize_pattern_overlay_gradient
@@ -289,6 +290,114 @@ async def record_pattern_recently_used(
     return row
 
 
+def _normalize_wallpaper_fill_hex(
+    solid_hex: str | None,
+    background_config: dict | None,
+) -> str | None:
+    direct = (solid_hex or "").strip().upper()
+    if direct:
+        if not direct.startswith("#"):
+            direct = f"#{direct}"
+        return direct
+
+    if isinstance(background_config, dict):
+        fill = background_config.get("fill")
+        if isinstance(fill, dict):
+            raw = str(fill.get("hex") or "").strip().upper()
+            if raw:
+                return raw if raw.startswith("#") else f"#{raw}"
+    return None
+
+
+async def record_wallpaper_color_recently_used(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    *,
+    wallpaper_color_palette_id: str | None,
+    solid_hex: str | None,
+    background_config: dict | None,
+) -> UserMedia | None:
+    """Track catalog solid color wallpapers in recently-used (metadata only)."""
+    palette_id = (wallpaper_color_palette_id or "").strip()
+    fill_hex = _normalize_wallpaper_fill_hex(solid_hex, background_config)
+    if not palette_id or not fill_hex:
+        logger.warning(
+            "recently_used_wallpaper_color_missing_fields",
+            user_id=str(user_id),
+            wallpaper_color_palette_id=palette_id,
+        )
+        return None
+
+    title = ""
+    if isinstance(background_config, dict):
+        title = str(background_config.get("name") or "").strip()
+    if not title:
+        title = f"Color {fill_hex}"
+
+    now = datetime.now(timezone.utc)
+    existing = await db.execute(
+        select(UserMedia).where(
+            UserMedia.user_id == user_id,
+            UserMedia.kind == "wallpaper_color",
+            UserMedia.wallpaper_color_palette_id == palette_id,
+            UserMedia.solid_hex == fill_hex,
+        )
+    )
+    row = existing.scalar_one_or_none()
+    if row is not None:
+        touch_values: dict = {
+            "last_used_at": now,
+            "updated_at": now,
+            "title": title,
+        }
+        if background_config is not None:
+            touch_values["background_config"] = background_config
+        await db.execute(
+            update(UserMedia)
+            .where(UserMedia.id == row.id)
+            .values(**touch_values)
+        )
+        await db.commit()
+        await db.refresh(row)
+        logger.info(
+            "recently_used_wallpaper_color_touched",
+            user_id=str(user_id),
+            wallpaper_color_palette_id=palette_id,
+            solid_hex=fill_hex,
+            user_media_id=str(row.id),
+        )
+        return row
+
+    record_id = uuid.uuid4()
+    object_path = wallpaper_color_object_path(user_id, record_id)
+    row = UserMedia(
+        id=record_id,
+        user_id=user_id,
+        kind="wallpaper_color",
+        object_path=object_path,
+        content_type="application/vnd.ilaunching.wallpaper-color+json",
+        byte_size=0,
+        title=title,
+        source_kind="catalog",
+        wallpaper_color_palette_id=palette_id,
+        solid_hex=fill_hex,
+        background_config=background_config,
+        last_used_at=now,
+    )
+    db.add(row)
+    await db.flush()
+    await db.commit()
+    await db.refresh(row)
+    logger.info(
+        "recently_used_wallpaper_color_recorded",
+        user_id=str(user_id),
+        wallpaper_color_palette_id=palette_id,
+        solid_hex=fill_hex,
+        user_media_id=str(row.id),
+    )
+    return row
+
+
 async def sync_recently_used_from_synaptic_experience(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -301,6 +410,9 @@ async def sync_recently_used_from_synaptic_experience(
     pattern_delivery_url: str | None = None,
     pattern_opacity: float | None = None,
     pattern_overlay_gradient: dict | None = None,
+    wallpaper_color_palette_id: str | None = None,
+    solid_hex: str | None = None,
+    background_config: dict | None = None,
 ) -> None:
     try:
         if background_kind == "media_photo" and media_photo_id:
@@ -316,6 +428,14 @@ async def sync_recently_used_from_synaptic_experience(
                 pattern_delivery_url=pattern_delivery_url,
                 pattern_opacity=pattern_opacity,
                 pattern_overlay_gradient=pattern_overlay_gradient,
+            )
+        elif background_kind == "solid":
+            await record_wallpaper_color_recently_used(
+                db,
+                user_id,
+                wallpaper_color_palette_id=wallpaper_color_palette_id,
+                solid_hex=solid_hex,
+                background_config=background_config,
             )
     except Exception:
         logger.exception(
@@ -338,7 +458,7 @@ async def list_recently_used_wallpapers(
         select(UserMedia)
         .where(
             UserMedia.user_id == user_id,
-            UserMedia.kind.in_(("wallpaper", "pattern")),
+            UserMedia.kind.in_(("wallpaper", "pattern", "wallpaper_color")),
             UserMedia.last_used_at.isnot(None),
         )
         .order_by(UserMedia.last_used_at.desc())
@@ -424,6 +544,25 @@ async def serialize_user_media(
     catalog_assets: dict[str, dict] | None = None,
 ) -> dict:
     title = (row.title or "").strip()
+    if row.kind == "wallpaper_color":
+        palette_id = (row.wallpaper_color_palette_id or "").strip()
+        fill_hex = (row.solid_hex or "").strip()
+        if not title:
+            title = fill_hex or palette_id or "Color"
+        return {
+            "id": str(row.id),
+            "item_type": "wallpaper_color",
+            "user_id": str(row.user_id),
+            "kind": row.kind,
+            "title": title,
+            "wallpaper_color_palette_id": palette_id or None,
+            "solid_hex": fill_hex or None,
+            "background_config": row.background_config,
+            "object_path": row.object_path,
+            "last_used_at": row.last_used_at.isoformat() if row.last_used_at else None,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+        }
+
     if row.kind == "pattern":
         pid = (row.pattern_id or "").strip()
         if not title:

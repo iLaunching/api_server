@@ -36,6 +36,9 @@ class UserMedia(Base):
     pattern_delivery_url = Column(Text, nullable=True)
     pattern_opacity = Column(Float, nullable=True)
     pattern_overlay_gradient = Column(JSONB, nullable=True)
+    wallpaper_color_palette_id = Column(Text, nullable=True)
+    solid_hex = Column(Text, nullable=True)
+    background_config = Column(JSONB, nullable=True)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(
         DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow

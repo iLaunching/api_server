@@ -55,6 +55,7 @@ MIGRATIONS = [
     "058_wallpaper_color_catalog_and_none_kind.sql",
     "059_wallpaper_color_hex_palette_ids.sql",
     "060_user_media_catalog_object_path.sql",
+    "061_user_media_wallpaper_color_recently_used.sql",
 ]
 
 async def run_all_migrations():

@@ -83,6 +83,10 @@ def pattern_object_path(user_id: uuid.UUID, record_id: uuid.UUID) -> str:
     return f"users/{user_id}/patterns/{record_id}.svg"
 
 
+def wallpaper_color_object_path(user_id: uuid.UUID, record_id: uuid.UUID) -> str:
+    return f"users/{user_id}/wallpaper-colors/{record_id}.json"
+
+
 def extension_for_content_type(content_type: str) -> str:
     ct = (content_type or "").split(";")[0].strip().lower()
     if ct == "image/webp":

@@ -765,6 +765,9 @@ async def update_ac_current_smart_hub_synaptic_expressive_experience(
                     experience.pattern_opacity if experience.pattern_opacity is not None else 1.0
                 ),
                 pattern_overlay_gradient=experience.pattern_overlay_gradient,
+                wallpaper_color_palette_id=experience.wallpaper_color_palette_id,
+                solid_hex=experience.solid_hex,
+                background_config=experience.background_config,
             )
             message = "Synaptic expressive experience updated"
             logger.info(

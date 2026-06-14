@@ -107,13 +107,25 @@ async def list_recently_used_user_wallpapers(
         )
 
     uid = uuid.UUID(str(user_id))
-    rows = await list_recently_used_wallpapers(db, uid, limit=limit, offset=offset)
-    items = await serialize_user_media_list(rows)
+    try:
+        rows = await list_recently_used_wallpapers(db, uid, limit=limit, offset=offset)
+        items = await serialize_user_media_list(rows)
+    except Exception as exc:
+        logger.exception(
+            "recently_used_wallpapers_list_failed",
+            user_id=str(user_id),
+            limit=limit,
+            offset=offset,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to load recently used wallpapers",
+        ) from exc
     return {
         "items": items,
         "limit": limit,
         "offset": offset,
-        "count": len(rows),
+        "count": len(items),
     }
 
 

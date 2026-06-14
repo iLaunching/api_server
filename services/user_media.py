@@ -643,14 +643,23 @@ async def serialize_user_media_list(
         missing_ids.append(catalog_id)
 
     catalog_assets = await prefetch_catalog_assets_by_ids(missing_ids)
-    return await asyncio.gather(
-        *(
-            serialize_user_media(
+
+    async def _serialize_row(row: UserMedia) -> dict | None:
+        try:
+            return await serialize_user_media(
                 row,
                 width_px=width_px,
                 preview_width_px=preview_width_px,
                 catalog_assets=catalog_assets,
             )
-            for row in rows
-        )
-    )
+        except Exception:
+            logger.exception(
+                "recently_used_row_serialize_failed",
+                user_media_id=str(row.id),
+                kind=row.kind,
+                source_kind=row.source_kind,
+            )
+            return None
+
+    serialized = await asyncio.gather(*(_serialize_row(row) for row in rows))
+    return [item for item in serialized if item is not None]

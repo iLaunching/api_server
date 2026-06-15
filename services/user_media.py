@@ -303,6 +303,33 @@ def _normalize_wallpaper_fill_hex(
     if isinstance(background_config, dict):
         fill = background_config.get("fill")
         if isinstance(fill, dict):
+            kind = str(fill.get("kind") or "").strip().lower()
+            if kind == "gradient":
+                preview = background_config.get("preview")
+                if isinstance(preview, list):
+                    for raw in preview:
+                        if raw:
+                            hex_value = str(raw).strip().upper()
+                            if hex_value:
+                                return (
+                                    hex_value
+                                    if hex_value.startswith("#")
+                                    else f"#{hex_value}"
+                                )
+                stops = fill.get("stops")
+                if isinstance(stops, list):
+                    ordered = sorted(
+                        (s for s in stops if isinstance(s, dict)),
+                        key=lambda s: int(s.get("sort_order") or 0),
+                    )
+                    for stop in ordered:
+                        hex_value = str(stop.get("hex") or "").strip().upper()
+                        if hex_value:
+                            return (
+                                hex_value
+                                if hex_value.startswith("#")
+                                else f"#{hex_value}"
+                            )
             raw = str(fill.get("hex") or "").strip().upper()
             if raw:
                 return raw if raw.startswith("#") else f"#{raw}"
@@ -317,7 +344,7 @@ async def record_wallpaper_color_recently_used(
     solid_hex: str | None,
     background_config: dict | None,
 ) -> UserMedia | None:
-    """Track catalog solid color wallpapers in recently-used (metadata only)."""
+    """Track catalog solid color and gradient wallpapers in recently-used (metadata only)."""
     palette_id = (wallpaper_color_palette_id or "").strip()
     fill_hex = _normalize_wallpaper_fill_hex(solid_hex, background_config)
     if not palette_id or not fill_hex:
@@ -332,7 +359,15 @@ async def record_wallpaper_color_recently_used(
     if isinstance(background_config, dict):
         title = str(background_config.get("name") or "").strip()
     if not title:
-        title = f"Color {fill_hex}"
+        fill_kind = ""
+        if isinstance(background_config, dict):
+            fill = background_config.get("fill")
+            if isinstance(fill, dict):
+                fill_kind = str(fill.get("kind") or "").strip().lower()
+        if fill_kind == "gradient":
+            title = f"Gradient {palette_id}"
+        else:
+            title = f"Color {fill_hex}"
 
     now = datetime.now(timezone.utc)
     existing = await db.execute(
@@ -429,7 +464,7 @@ async def sync_recently_used_from_synaptic_experience(
                 pattern_opacity=pattern_opacity,
                 pattern_overlay_gradient=pattern_overlay_gradient,
             )
-        elif background_kind == "solid":
+        elif background_kind in ("solid", "gradient"):
             await record_wallpaper_color_recently_used(
                 db,
                 user_id,

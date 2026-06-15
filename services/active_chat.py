@@ -366,6 +366,44 @@ async def update_ac_synaptic_expressive_experience(
         payload["pan_x"] = 0
         payload["pan_y"] = 0
         payload["dim_opacity"] = 0
+    elif kind == "gradient":
+        gradient_id = payload.get("wallpaper_color_palette_id")
+        bg_config = payload.get("background_config")
+        if not gradient_id or not bg_config:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "wallpaper_color_palette_id and background_config are required "
+                    "when background_kind is gradient"
+                ),
+            )
+        fill = bg_config.get("fill") if isinstance(bg_config, dict) else None
+        solid_hex = None
+        if isinstance(fill, dict):
+            if fill.get("hex"):
+                solid_hex = str(fill["hex"]).strip()
+            elif isinstance(fill.get("stops"), list):
+                for stop in fill["stops"]:
+                    if isinstance(stop, dict) and stop.get("hex"):
+                        solid_hex = str(stop["hex"]).strip()
+                        break
+            preview = bg_config.get("preview")
+            if not solid_hex and isinstance(preview, list):
+                for raw in preview:
+                    if raw:
+                        solid_hex = str(raw).strip()
+                        break
+        payload["solid_hex"] = solid_hex
+        payload["pattern_category_slug"] = None
+        payload["pattern_id"] = None
+        payload["pattern_delivery_url"] = None
+        payload["pattern_opacity"] = 1
+        payload["pattern_overlay_gradient"] = None
+        payload["media_photo_id"] = None
+        payload["user_photo_id"] = None
+        payload["pan_x"] = 0
+        payload["pan_y"] = 0
+        payload["dim_opacity"] = 0
 
     palette_only_patch = kind is None and any(
         payload.get(key) is not None

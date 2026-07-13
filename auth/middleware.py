@@ -105,6 +105,8 @@ async def get_current_session(credentials: Optional[HTTPAuthorizationCredentials
                 "access_token": token,  # Include token for subsequent API calls
             }
             
+    except HTTPException:
+        raise
     except httpx.TimeoutException:
         logger.error("Auth API timeout")
         raise HTTPException(

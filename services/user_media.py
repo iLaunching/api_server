@@ -24,6 +24,7 @@ from services.media_r2 import (
     normalize_image_content_type,
     pattern_object_path,
     put_user_object,
+    chat_attachment_object_path,
     wallpaper_color_object_path,
     wallpaper_object_path,
 )
@@ -108,6 +109,50 @@ async def create_user_wallpaper_upload(
     )
     await db.commit()
     await db.refresh(row)
+    return row
+
+
+async def create_user_chat_attachment_upload(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    body: bytes,
+    content_type: str,
+) -> UserMedia:
+    row = await stage_user_chat_attachment_upload(db, user_id, body, content_type)
+    await db.commit()
+    await db.refresh(row)
+    return row
+
+
+async def stage_user_chat_attachment_upload(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    body: bytes,
+    content_type: str,
+) -> UserMedia:
+    """Upload a room chat photo to user R2 (flush only — caller commits)."""
+    ct = normalize_image_content_type(content_type, body)
+    if not body or len(body) > 20 * 1024 * 1024:
+        raise ValueError("invalid_body_size")
+
+    upload_id = uuid.uuid4()
+    ext = extension_for_content_type(ct)
+    object_path = chat_attachment_object_path(user_id, upload_id, ext)
+
+    await put_user_object(object_path, body, ct)
+
+    row = UserMedia(
+        id=upload_id,
+        user_id=user_id,
+        kind="chat_attachment",
+        object_path=object_path,
+        content_type=ct,
+        byte_size=len(body),
+        title="Chat photo",
+        source_kind="chat",
+    )
+    db.add(row)
+    await db.flush()
     return row
 
 

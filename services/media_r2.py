@@ -15,11 +15,18 @@ logger = structlog.get_logger()
 USER_WALLPAPER_PATH = re.compile(
     r"^users/[0-9a-fA-F-]{36}/wallpapers/[0-9a-fA-F-]{36}\.(webp|jpe?g|png)$"
 )
+USER_CHAT_ATTACHMENT_PATH = re.compile(
+    r"^users/[0-9a-fA-F-]{36}/chat/[0-9a-fA-F-]{36}\.(webp|jpe?g|png)$"
+)
 USER_PATTERN_PATH = re.compile(
     r"^users/[0-9a-fA-F-]{36}/patterns/[0-9a-fA-F-]{36}\.svg$"
 )
 USER_OBJECT_PATH = re.compile(
-    r"^users/[0-9a-fA-F-]{36}/(?:wallpapers/[0-9a-fA-F-]{36}\.(?:webp|jpe?g|png)|patterns/[0-9a-fA-F-]{36}\.svg)$"
+    r"^users/[0-9a-fA-F-]{36}/(?:"
+    r"wallpapers/[0-9a-fA-F-]{36}\.(?:webp|jpe?g|png)|"
+    r"chat/[0-9a-fA-F-]{36}\.(?:webp|jpe?g|png)|"
+    r"patterns/[0-9a-fA-F-]{36}\.svg"
+    r")$"
 )
 
 ALLOWED_IMAGE_CONTENT_TYPES = frozenset(
@@ -79,6 +86,10 @@ def wallpaper_object_path(user_id: uuid.UUID, upload_id: uuid.UUID, ext: str) ->
     return f"users/{user_id}/wallpapers/{upload_id}.{ext}"
 
 
+def chat_attachment_object_path(user_id: uuid.UUID, upload_id: uuid.UUID, ext: str) -> str:
+    return f"users/{user_id}/chat/{upload_id}.{ext}"
+
+
 def pattern_object_path(user_id: uuid.UUID, record_id: uuid.UUID) -> str:
     return f"users/{user_id}/patterns/{record_id}.svg"
 
@@ -132,10 +143,14 @@ async def put_user_object(
             },
         )
         if response.status_code >= 400:
+            detail = response.text[:500].strip()
             logger.error(
                 "media_worker_ingest_failed",
                 status=response.status_code,
-                body=response.text[:500],
+                body=detail,
                 key=key,
             )
-            response.raise_for_status()
+            raise RuntimeError(
+                f"Media worker ingest failed ({response.status_code})"
+                + (f": {detail}" if detail else "")
+            )

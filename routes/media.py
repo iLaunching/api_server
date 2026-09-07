@@ -14,6 +14,7 @@ from services.synaptic_expressive_experience_payload import build_synaptic_expre
 from services.media_r2 import normalize_image_content_type
 from services.user_media import (
     apply_user_wallpaper_to_synaptic_experience,
+    create_user_chat_attachment_upload,
     create_user_wallpaper_upload,
     list_recently_used_wallpapers,
     serialize_user_media,
@@ -22,6 +23,26 @@ from services.user_media import (
 
 logger = structlog.get_logger()
 router = APIRouter()
+
+
+def _media_upload_http_exception(exc: Exception) -> HTTPException:
+    if isinstance(exc, ValueError):
+        return HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
+    if isinstance(exc, RuntimeError):
+        logger.error("user_media_upload_not_configured", error=str(exc))
+        return HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc) or "Media upload is not configured on the server",
+        )
+    message = str(exc).strip() or "Media upload failed"
+    logger.exception("user_media_upload_failed", error=message)
+    return HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail=message,
+    )
 
 
 @router.get("/media/upload-status")
@@ -67,26 +88,51 @@ async def upload_user_wallpaper(
             body,
             content_type,
         )
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
-        ) from exc
-    except RuntimeError as exc:
-        logger.error("user_wallpaper_upload_not_configured", error=str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Media upload is not configured on the server",
-        ) from exc
+    except HTTPException:
+        raise
     except Exception as exc:
-        logger.exception("user_wallpaper_upload_failed")
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Failed to store wallpaper in media server",
-        ) from exc
+        raise _media_upload_http_exception(exc) from exc
 
     return {
         "message": "Wallpaper uploaded",
+        "media": await serialize_user_media(row),
+    }
+
+
+@router.post("/users/me/media/chat-attachments")
+async def upload_user_chat_attachment(
+    file: UploadFile = File(...),
+    session: dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    user_id = session.get("user_id")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User ID not found in session",
+        )
+
+    body = await file.read()
+    if not body:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file")
+
+    try:
+        content_type = normalize_image_content_type(
+            file.content_type, body, filename=file.filename
+        )
+        row = await create_user_chat_attachment_upload(
+            db,
+            uuid.UUID(str(user_id)),
+            body,
+            content_type,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _media_upload_http_exception(exc) from exc
+
+    return {
+        "message": "Chat attachment uploaded",
         "media": await serialize_user_media(row),
     }
 

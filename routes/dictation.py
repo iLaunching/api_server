@@ -20,8 +20,10 @@ import structlog
 
 from auth.middleware import get_current_session
 from services.dictation_asr import (
+    ASRProviderError,
     floats_to_wav_bytes,
     format_intent,
+    pcm16_to_wav_bytes,
     provider_configured,
     transcribe_wav,
 )
@@ -163,20 +165,32 @@ async def transcribe_dictation_audio(
     max_bytes = sample_rate * 2 * 60
     if len(raw) > max_bytes:
         raw = raw[:max_bytes]
+    # Align to 16-bit frames
+    if len(raw) % 2 == 1:
+        raw = raw[:-1]
     if len(raw) < sample_rate * 2 // 10:  # < ~100 ms
         raise HTTPException(status_code=400, detail="No speech detected.")
 
-    import struct as _struct
-
-    count = len(raw) // 2
-    samples = []
-    for i in range(count):
-        (v,) = _struct.unpack_from("<h", raw, i * 2)
-        samples.append(v / 32767.0)
-
-    wav = floats_to_wav_bytes(samples, sample_rate=sample_rate)
+    wav = pcm16_to_wav_bytes(raw, sample_rate=sample_rate)
     try:
         text = await transcribe_wav(wav)
+    except ASRProviderError as exc:
+        logger.error(
+            "dictation_transcribe_failed",
+            status=exc.status_code,
+            message=exc.message,
+            pcm_bytes=len(raw),
+            wav_bytes=len(wav),
+        )
+        # Map provider auth / rate-limit distinctly; everything else stays 502.
+        status = 502
+        if exc.status_code in (401, 403):
+            status = 503
+        elif exc.status_code == 429:
+            status = 429
+        elif exc.status_code == 504:
+            status = 504
+        raise HTTPException(status_code=status, detail=exc.message) from exc
     except RuntimeError as exc:
         code = str(exc)
         if code == "not_configured":
@@ -187,7 +201,7 @@ async def transcribe_dictation_audio(
     logger.info(
         "dictation_transcribe_ok",
         session_id=body.session_id,
-        samples=count,
+        pcm_bytes=len(raw),
         text_len=len(text or ""),
     )
     return TranscribeResponseBody(text=text or "", provider_configured=True)

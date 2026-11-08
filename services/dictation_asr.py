@@ -13,16 +13,22 @@ import os
 import re
 import struct
 import wave
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 import structlog
 
 logger = structlog.get_logger()
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
-OPENAI_ASR_MODEL = os.getenv("OPENAI_ASR_MODEL", "whisper-1").strip() or "whisper-1"
-OPENAI_INTENT_MODEL = os.getenv("OPENAI_INTENT_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
+def _env_secret(name: str) -> str:
+    raw = os.getenv(name, "") or ""
+    return raw.strip().strip('"').strip("'")
+
+
+OPENAI_API_KEY = _env_secret("OPENAI_API_KEY")
+# whisper-1 is the stable transcription model; override only with another audio model.
+OPENAI_ASR_MODEL = _env_secret("OPENAI_ASR_MODEL") or "whisper-1"
+OPENAI_INTENT_MODEL = _env_secret("OPENAI_INTENT_MODEL") or "gpt-4o-mini"
 
 _FILLERS = {"um", "uh", "erm", "ah", "like", "you know", "i mean"}
 
@@ -31,17 +37,31 @@ def provider_configured() -> bool:
     return bool(OPENAI_API_KEY)
 
 
-def floats_to_wav_bytes(samples: list[float], sample_rate: int = 16_000) -> bytes:
-    """Encode mono float PCM (~±1) as 16-bit WAV for Whisper upload."""
-    clipped = [max(-1.0, min(1.0, float(s))) for s in samples]
-    pcm = b"".join(struct.pack("<h", int(v * 32767.0)) for v in clipped)
+def pcm16_to_wav_bytes(pcm16: bytes, sample_rate: int = 16_000) -> bytes:
+    """Wrap little-endian mono PCM16 as a WAV container for Whisper."""
     buf = io.BytesIO()
     with wave.open(buf, "wb") as wf:
         wf.setnchannels(1)
         wf.setsampwidth(2)
         wf.setframerate(sample_rate)
-        wf.writeframes(pcm)
+        wf.writeframes(pcm16)
     return buf.getvalue()
+
+
+def floats_to_wav_bytes(samples: list[float], sample_rate: int = 16_000) -> bytes:
+    """Encode mono float PCM (~±1) as 16-bit WAV for Whisper upload."""
+    pcm = bytearray(len(samples) * 2)
+    for i, sample in enumerate(samples):
+        clipped = max(-1.0, min(1.0, float(sample)))
+        struct.pack_into("<h", pcm, i * 2, int(clipped * 32767.0))
+    return pcm16_to_wav_bytes(bytes(pcm), sample_rate=sample_rate)
+
+
+class ASRProviderError(RuntimeError):
+    def __init__(self, status_code: int, message: str):
+        self.status_code = status_code
+        self.message = message
+        super().__init__(f"asr_provider_error:{status_code}")
 
 
 async def transcribe_wav(wav_bytes: bytes) -> str:
@@ -51,19 +71,45 @@ async def transcribe_wav(wav_bytes: bytes) -> str:
         return ""
 
     headers = {"Authorization": f"Bearer {OPENAI_API_KEY}"}
-    files = {"file": ("speech.wav", wav_bytes, "audio/wav")}
+    # httpx multipart — do not set Content-Type manually.
+    files = {"file": ("speech.wav", io.BytesIO(wav_bytes), "audio/wav")}
     data = {"model": OPENAI_ASR_MODEL, "response_format": "json"}
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        response = await client.post(
-            "https://api.openai.com/v1/audio/transcriptions",
-            headers=headers,
-            files=files,
-            data=data,
-        )
+    try:
+        async with httpx.AsyncClient(timeout=90.0) as client:
+            response = await client.post(
+                "https://api.openai.com/v1/audio/transcriptions",
+                headers=headers,
+                files=files,
+                data=data,
+            )
+    except httpx.TimeoutException as exc:
+        logger.error("whisper_timeout")
+        raise ASRProviderError(504, "Speech provider timed out.") from exc
+    except httpx.HTTPError as exc:
+        logger.error("whisper_http_error", error=str(exc))
+        raise ASRProviderError(502, "Could not reach speech provider.") from exc
+
     if response.status_code >= 400:
-        logger.error("whisper_failed", status=response.status_code)
-        raise RuntimeError(f"asr_provider_error:{response.status_code}")
+        detail = (response.text or "")[:400]
+        logger.error(
+            "whisper_failed",
+            status=response.status_code,
+            model=OPENAI_ASR_MODEL,
+            detail=detail,
+            wav_bytes=len(wav_bytes),
+        )
+        if response.status_code in (401, 403):
+            raise ASRProviderError(
+                response.status_code,
+                "Speech API key was rejected. Check OPENAI_API_KEY on the server.",
+            )
+        if response.status_code == 429:
+            raise ASRProviderError(429, "Speech provider rate-limited. Try again.")
+        raise ASRProviderError(
+            response.status_code,
+            f"Speech provider error ({response.status_code}).",
+        )
     payload = response.json()
     text = (payload.get("text") or "").strip()
     return text

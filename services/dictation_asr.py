@@ -2,7 +2,8 @@
 Dictation ASR + intent helpers.
 
 Provider keys stay on the server. When unset, callers get a clear not-configured signal.
-MVP ASR: buffer PCM and run OpenAI Whisper on commit when OPENAI_API_KEY is set.
+MVP ASR: buffer PCM and run OpenAI file transcription on commit when OPENAI_API_KEY is set.
+Default model is `gpt-transcribe` (whisper-1 / gpt-4o-*-transcribe are deprecated).
 Intent: small chat completion when key set; otherwise local light-clean fallback.
 """
 
@@ -26,8 +27,8 @@ def _env_secret(name: str) -> str:
 
 
 OPENAI_API_KEY = _env_secret("OPENAI_API_KEY")
-# whisper-1 is the stable transcription model; override only with another audio model.
-OPENAI_ASR_MODEL = _env_secret("OPENAI_ASR_MODEL") or "whisper-1"
+# File / buffer-and-commit path — OpenAI recommends gpt-transcribe over deprecated whisper-1.
+OPENAI_ASR_MODEL = _env_secret("OPENAI_ASR_MODEL") or "gpt-transcribe"
 OPENAI_INTENT_MODEL = _env_secret("OPENAI_INTENT_MODEL") or "gpt-4o-mini"
 
 _FILLERS = {"um", "uh", "erm", "ah", "like", "you know", "i mean"}

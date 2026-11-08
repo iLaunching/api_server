@@ -66,15 +66,22 @@ class IntentFormatResponseBody(BaseModel):
 
 
 class TranscribeRequestBody(BaseModel):
-    """One-shot HTTP ASR (preferred over WebSocket for Railway reliability)."""
+    """One-shot HTTP ASR + optional intent in a single round-trip."""
     pcm16_b64: str = Field(..., min_length=1, description="Little-endian PCM16 mono")
     sample_rate: int = 16_000
     session_id: str | None = None
+    include_intent: bool = True
+    before_text: str = ""
+    selected_text: str = ""
+    after_text: str = ""
+    field_kind: str = "composer"
 
 
 class TranscribeResponseBody(BaseModel):
     text: str
     provider_configured: bool
+    intent_text: str = ""
+    used_fallback: bool = True
 
 
 def _purge_expired() -> None:
@@ -198,13 +205,38 @@ async def transcribe_dictation_audio(
         logger.error("dictation_transcribe_failed", error=code)
         raise HTTPException(status_code=502, detail="Speech recognition failed.") from exc
 
+    asr_text = text or ""
+    intent_text = asr_text
+    used_fallback = True
+    if body.include_intent and asr_text:
+        # Prefer session context when the client didn't resend field text.
+        ctx = {}
+        if body.session_id and body.session_id in _SESSIONS:
+            ctx = _SESSIONS[body.session_id].get("context") or {}
+        formatted = await format_intent(
+            asr_text,
+            before_text=body.before_text or ctx.get("before_text", ""),
+            selected_text=body.selected_text or ctx.get("selected_text", ""),
+            after_text=body.after_text or ctx.get("after_text", ""),
+            field_kind=body.field_kind or ctx.get("field_kind", "composer"),
+        )
+        intent_text = formatted.get("intent_text") or asr_text
+        used_fallback = bool(formatted.get("used_fallback", True))
+
     logger.info(
         "dictation_transcribe_ok",
         session_id=body.session_id,
         pcm_bytes=len(raw),
-        text_len=len(text or ""),
+        text_len=len(asr_text),
+        intent_len=len(intent_text),
+        used_fallback=used_fallback,
     )
-    return TranscribeResponseBody(text=text or "", provider_configured=True)
+    return TranscribeResponseBody(
+        text=asr_text,
+        provider_configured=True,
+        intent_text=intent_text,
+        used_fallback=used_fallback,
+    )
 
 
 @router.websocket("/ws/{session_id}")

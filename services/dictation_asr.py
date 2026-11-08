@@ -30,6 +30,9 @@ OPENAI_API_KEY = _env_secret("OPENAI_API_KEY")
 # File / buffer-and-commit path — OpenAI recommends gpt-transcribe over deprecated whisper-1.
 OPENAI_ASR_MODEL = _env_secret("OPENAI_ASR_MODEL") or "gpt-transcribe"
 OPENAI_INTENT_MODEL = _env_secret("OPENAI_INTENT_MODEL") or "gpt-4o-mini"
+# local = instant light-clean only; cloud = OpenAI format with short timeout + local fallback.
+DICTATION_INTENT_MODE = (_env_secret("DICTATION_INTENT_MODE") or "cloud").lower()
+INTENT_TIMEOUT_SEC = float(os.getenv("DICTATION_INTENT_TIMEOUT_SEC", "8") or "8")
 
 _FILLERS = {"um", "uh", "erm", "ah", "like", "you know", "i mean"}
 
@@ -183,25 +186,29 @@ async def format_intent(
     selected_text: str = "",
     after_text: str = "",
     field_kind: str = "composer",
+    force_local: bool = False,
 ) -> dict[str, Any]:
     cleaned_local = light_clean(asr_text)
     if not cleaned_local:
         return {"intent_text": "", "used_fallback": True}
 
-    if not OPENAI_API_KEY:
+    use_cloud = (
+        not force_local
+        and DICTATION_INTENT_MODE not in ("local", "off", "none")
+        and bool(OPENAI_API_KEY)
+    )
+    if not use_cloud:
         return {"intent_text": cleaned_local, "used_fallback": True}
 
     system = (
-        "You rewrite speech-to-text into what the user meant to type in a chat composer. "
-        "Strip fillers, apply self-corrections, fix punctuation/casing, keep the user's voice. "
-        "Return ONLY the final message text with no quotes or explanation."
+        "Rewrite ASR into the chat message the user meant. "
+        "Strip fillers, apply self-corrections, fix punctuation. "
+        "Reply with ONLY the message text."
     )
+    # Keep context tight — less tokens = faster.
     user = (
-        f"field_kind: {field_kind}\n"
-        f"before: {before_text[:500]}\n"
-        f"selected: {selected_text[:200]}\n"
-        f"after: {after_text[:500]}\n"
-        f"asr: {asr_text}"
+        f"before:{before_text[-200:]}\n"
+        f"asr:{asr_text}"
     )
     headers = {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
@@ -209,14 +216,15 @@ async def format_intent(
     }
     body = {
         "model": OPENAI_INTENT_MODEL,
-        "temperature": 0.2,
+        "temperature": 0.1,
+        "max_tokens": 120,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
     }
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=INTENT_TIMEOUT_SEC) as client:
             response = await client.post(
                 "https://api.openai.com/v1/chat/completions",
                 headers=headers,

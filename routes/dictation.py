@@ -63,6 +63,18 @@ class IntentFormatResponseBody(BaseModel):
     used_fallback: bool
 
 
+class TranscribeRequestBody(BaseModel):
+    """One-shot HTTP ASR (preferred over WebSocket for Railway reliability)."""
+    pcm16_b64: str = Field(..., min_length=1, description="Little-endian PCM16 mono")
+    sample_rate: int = 16_000
+    session_id: str | None = None
+
+
+class TranscribeResponseBody(BaseModel):
+    text: str
+    provider_configured: bool
+
+
 def _purge_expired() -> None:
     now = time.time()
     dead = [sid for sid, meta in _SESSIONS.items() if meta.get("expires_at", 0) < now]
@@ -121,6 +133,64 @@ async def format_dictation_intent(
         intent_text=result["intent_text"],
         used_fallback=bool(result["used_fallback"]),
     )
+
+
+@router.post("/transcribe", response_model=TranscribeResponseBody)
+async def transcribe_dictation_audio(
+    body: TranscribeRequestBody,
+    current_user: dict = Depends(get_current_session),
+):
+    """
+    Buffer-and-commit ASR over HTTPS.
+
+    App records locally, then posts PCM16 once on stop. Avoids WebSocket idle
+    timeouts on some Railway / mobile network paths.
+    """
+    _ = current_user
+    if not provider_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="Speech service is not configured yet.",
+        )
+
+    try:
+        raw = base64.b64decode(body.pcm16_b64)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid pcm16_b64") from exc
+
+    sample_rate = body.sample_rate if body.sample_rate > 0 else 16_000
+    # Cap ~60s @ 16 kHz mono PCM16
+    max_bytes = sample_rate * 2 * 60
+    if len(raw) > max_bytes:
+        raw = raw[:max_bytes]
+    if len(raw) < sample_rate * 2 // 10:  # < ~100 ms
+        raise HTTPException(status_code=400, detail="No speech detected.")
+
+    import struct as _struct
+
+    count = len(raw) // 2
+    samples = []
+    for i in range(count):
+        (v,) = _struct.unpack_from("<h", raw, i * 2)
+        samples.append(v / 32767.0)
+
+    wav = floats_to_wav_bytes(samples, sample_rate=sample_rate)
+    try:
+        text = await transcribe_wav(wav)
+    except RuntimeError as exc:
+        code = str(exc)
+        if code == "not_configured":
+            raise HTTPException(status_code=503, detail="Speech service is not configured yet.") from exc
+        logger.error("dictation_transcribe_failed", error=code)
+        raise HTTPException(status_code=502, detail="Speech recognition failed.") from exc
+
+    logger.info(
+        "dictation_transcribe_ok",
+        session_id=body.session_id,
+        samples=count,
+        text_len=len(text or ""),
+    )
+    return TranscribeResponseBody(text=text or "", provider_configured=True)
 
 
 @router.websocket("/ws/{session_id}")

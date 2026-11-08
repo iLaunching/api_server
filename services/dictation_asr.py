@@ -65,54 +65,81 @@ class ASRProviderError(RuntimeError):
 
 
 async def transcribe_wav(wav_bytes: bytes) -> str:
+    import asyncio
+
     if not OPENAI_API_KEY:
         raise RuntimeError("not_configured")
     if len(wav_bytes) < 44:
         return ""
 
     headers = {"Authorization": f"Bearer {OPENAI_API_KEY}"}
-    # httpx multipart — do not set Content-Type manually.
-    files = {"file": ("speech.wav", io.BytesIO(wav_bytes), "audio/wav")}
     data = {"model": OPENAI_ASR_MODEL, "response_format": "json"}
+    # Brief retries — free/low-tier Whisper often returns 429 under burst traffic.
+    max_attempts = 4
+    last_detail = ""
 
-    try:
-        async with httpx.AsyncClient(timeout=90.0) as client:
-            response = await client.post(
-                "https://api.openai.com/v1/audio/transcriptions",
-                headers=headers,
-                files=files,
-                data=data,
+    async with httpx.AsyncClient(timeout=90.0) as client:
+        for attempt in range(max_attempts):
+            # BytesIO must be recreated each attempt (stream is consumed).
+            files = {"file": ("speech.wav", io.BytesIO(wav_bytes), "audio/wav")}
+            try:
+                response = await client.post(
+                    "https://api.openai.com/v1/audio/transcriptions",
+                    headers=headers,
+                    files=files,
+                    data=data,
+                )
+            except httpx.TimeoutException as exc:
+                logger.error("whisper_timeout", attempt=attempt + 1)
+                raise ASRProviderError(504, "Speech provider timed out.") from exc
+            except httpx.HTTPError as exc:
+                logger.error("whisper_http_error", error=str(exc), attempt=attempt + 1)
+                raise ASRProviderError(502, "Could not reach speech provider.") from exc
+
+            if response.status_code < 400:
+                payload = response.json()
+                return (payload.get("text") or "").strip()
+
+            last_detail = (response.text or "")[:400]
+            logger.error(
+                "whisper_failed",
+                status=response.status_code,
+                model=OPENAI_ASR_MODEL,
+                detail=last_detail,
+                wav_bytes=len(wav_bytes),
+                attempt=attempt + 1,
             )
-    except httpx.TimeoutException as exc:
-        logger.error("whisper_timeout")
-        raise ASRProviderError(504, "Speech provider timed out.") from exc
-    except httpx.HTTPError as exc:
-        logger.error("whisper_http_error", error=str(exc))
-        raise ASRProviderError(502, "Could not reach speech provider.") from exc
 
-    if response.status_code >= 400:
-        detail = (response.text or "")[:400]
-        logger.error(
-            "whisper_failed",
-            status=response.status_code,
-            model=OPENAI_ASR_MODEL,
-            detail=detail,
-            wav_bytes=len(wav_bytes),
-        )
-        if response.status_code in (401, 403):
+            if response.status_code in (401, 403):
+                raise ASRProviderError(
+                    response.status_code,
+                    "Speech API key was rejected. Check OPENAI_API_KEY on the server.",
+                )
+
+            if response.status_code == 429 and attempt + 1 < max_attempts:
+                retry_after = response.headers.get("retry-after")
+                try:
+                    delay = float(retry_after) if retry_after else (1.5 * (2**attempt))
+                except ValueError:
+                    delay = 1.5 * (2**attempt)
+                delay = min(max(delay, 0.5), 12.0)
+                logger.warning("whisper_rate_limited_retry", delay=delay, attempt=attempt + 1)
+                await asyncio.sleep(delay)
+                continue
+
+            if response.status_code == 429:
+                raise ASRProviderError(
+                    429,
+                    "Speech provider rate-limited. Wait a few seconds and try again "
+                    "(check OpenAI usage / tier limits).",
+                )
+
             raise ASRProviderError(
                 response.status_code,
-                "Speech API key was rejected. Check OPENAI_API_KEY on the server.",
+                f"Speech provider error ({response.status_code}).",
             )
-        if response.status_code == 429:
-            raise ASRProviderError(429, "Speech provider rate-limited. Try again.")
-        raise ASRProviderError(
-            response.status_code,
-            f"Speech provider error ({response.status_code}).",
-        )
-    payload = response.json()
-    text = (payload.get("text") or "").strip()
-    return text
+
+    raise ASRProviderError(429, "Speech provider rate-limited. Try again.")
 
 
 def light_clean(raw: str) -> str:

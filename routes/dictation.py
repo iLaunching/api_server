@@ -36,7 +36,7 @@ _SESSION_TTL_SEC = int(os.getenv("DICTATION_SESSION_TTL_SEC", "120"))
 
 
 class CreateSessionRequest(BaseModel):
-    client_session_id: Optional[str] = None
+    client_session_id: str | None = None
     field_kind: str = "composer"
     before_text: str = ""
     selected_text: str = ""

@@ -1,7 +1,7 @@
 """
 In-app dictation: short-lived session + WebSocket audio stream + intent format.
 
-Provider keys never leave this service. When OPENAI_API_KEY is unset, sessions
+Provider keys never leave this service. When GROQ_API_KEY is unset, sessions
 report provider_configured=false and the WS fails closed with not_configured.
 """
 
@@ -28,10 +28,10 @@ from services.dictation_asr import (
     provider_configured,
     transcribe_wav,
 )
-from services.fireworks_dictation import (
-    FireworksDictationError,
-    fireworks_configured,
+from services.groq_dictation import (
+    GroqDictationError,
     format_transcript,
+    groq_configured,
     transcribe_pcm16,
 )
 
@@ -122,12 +122,12 @@ async def create_dictation_session(
         "dictation_session_created",
         session_id=session_id,
         user_id=user_id,
-        provider_configured=fireworks_configured(),
+        provider_configured=groq_configured(),
     )
     return CreateSessionResponse(
         session_id=session_id,
         expires_at=expires_at,
-        provider_configured=fireworks_configured(),
+        provider_configured=groq_configured(),
     )
 
 
@@ -306,7 +306,7 @@ async def dictation_websocket(websocket: WebSocket, session_id: str):
         await websocket.close()
         return
 
-    if not fireworks_configured():
+    if not groq_configured():
         await websocket.send_json(
             {
                 "type": "error",
@@ -336,7 +336,7 @@ async def dictation_websocket(websocket: WebSocket, session_id: str):
         partial_lock_held = True
         try:
             text = await transcribe_pcm16(snapshot)
-        except FireworksDictationError as exc:
+        except GroqDictationError as exc:
             logger.warning("dictation_partial_failed", status=exc.status_code)
             return
         finally:
@@ -397,7 +397,7 @@ async def dictation_websocket(websocket: WebSocket, session_id: str):
                     break
                 try:
                     asr_text = await transcribe_pcm16(bytes(pcm))
-                except FireworksDictationError as exc:
+                except GroqDictationError as exc:
                     await websocket.send_json(
                         {
                             "type": "error",

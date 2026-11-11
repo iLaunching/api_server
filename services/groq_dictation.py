@@ -31,6 +31,29 @@ GROQ_BASE_URL = (
 GROQ_ASR_MODEL = _env_secret("GROQ_ASR_MODEL") or "whisper-large-v3-turbo"
 GROQ_ASR_LANGUAGE = _env_secret("GROQ_ASR_LANGUAGE") or "en"
 GROQ_FORMAT_MODEL = _env_secret("GROQ_FORMAT_MODEL") or "openai/gpt-oss-20b"
+GROQ_ASR_PROMPT = (
+    _env_secret("GROQ_ASR_PROMPT")
+    or "Punctuate correctly, remove stutters, and keep capitalization intact."
+)
+GROQ_USER_DICTIONARY = _env_secret("GROQ_USER_DICTIONARY")
+
+_FORMAT_SYSTEM = """You are an expert real-time dictation processor. Transform raw, noisy Speech-to-Text (ASR) transcripts into clean, polished written text ready to be pasted.
+
+CRITICAL RULES:
+1. PRESERVE INTENT & VOICE: Clean up structure without rephrasing, summarizing, or changing tone. Maintain the speaker's exact vocabulary, style, and persona.
+2. REMOVE VERBAL FILLERS: Strip out hesitation words and verbal clutter (e.g., "um", "uh", "you know", "like", "I mean", "so basically").
+3. EXECUTE BACKTRACKS & SELF-CORRECTIONS: Recognize spoken edits and replace earlier text with the final intended phrase.
+   - Pattern: "[Mistake] -> [Pivot Phrase] -> [Correction]"
+   - Pivot Phrases: "no wait", "scratch that", "actually", "I mean", "rather", "sorry", "make that".
+   - Example: "Meet at 3, no wait, make that 4 PM" -> "Meet at 4 PM"
+4. FORMAT SPOKEN PUNCTUATION & LISTS:
+   - Convert spoken layout commands into formatting (e.g., "new line" -> newline, "bullet point" -> •).
+   - Normalize numbers, dates, times, and currency (e.g., "five dollars" -> "$5", "friday" -> "Friday").
+   - Spoken lists: "first ... second ... third ..." become a numbered list.
+5. OUTPUT STRICTNESS: Return ONLY the processed text. Never add meta-comments, quotes, introductory text ("Here is your text:"), or explanatory notes.
+6. NO-SPEECH FILTER: If the input consists purely of background noise, hallucinated ASR tags (e.g., "Amara.org", "Subtitles by"), or non-speech sounds, output an empty string.
+
+Input Transcript:"""
 
 _RETRY_AFTER_RE = re.compile(r"try again in\s+(\d+(?:\.\d+)?)\s*s", re.IGNORECASE)
 
@@ -73,6 +96,8 @@ async def transcribe_pcm16(
         "response_format": "json",
         "temperature": "0",
     }
+    if GROQ_ASR_PROMPT:
+        data["prompt"] = GROQ_ASR_PROMPT[:800]
     if GROQ_ASR_LANGUAGE:
         data["language"] = GROQ_ASR_LANGUAGE
 
@@ -119,21 +144,31 @@ async def format_transcript(
     asr_text: str,
     *,
     before_text: str = "",
-) -> str:
-    """Rewrite the transcript. Returns "" when the call fails so the caller can keep raw text."""
+) -> str | None:
+    """Rewrite the transcript. None means the call failed and the caller should keep raw text. "" means no speech."""
     if not GROQ_API_KEY or not asr_text.strip():
-        return ""
-    system = (
-        "Rewrite ASR into the chat message the user meant. "
-        "Strip fillers, apply self-corrections, fix punctuation. "
-        "Reply with ONLY the message text."
-    )
-    user = f"before:{before_text[-200:]}\nasr:{asr_text}"
+        return None
+    system = _FORMAT_SYSTEM
+    if GROQ_USER_DICTIONARY:
+        terms = ", ".join(
+            part.strip() for part in GROQ_USER_DICTIONARY.split(",") if part.strip()
+        )
+        if terms:
+            system += (
+                "\n\nUSER DICTIONARY & CONTEXT:\n"
+                f"- Terminology: {terms}\n"
+                "- Directives: Treat any phonetically similar words as these exact terms.\n"
+            )
+    context = (before_text or "").strip()[-200:]
+    user = asr_text.strip()
+    if context:
+        user = f"Composer context (do not repeat unless the speaker continues it): {context}\n\n{user}"
     body = {
         "model": GROQ_FORMAT_MODEL,
-        "temperature": 0.1,
-        "max_tokens": 120,
+        "temperature": 0.0,
+        "max_tokens": 256,
         "reasoning_effort": "low",
+        "stop": ["\nInput Transcript:", "```"],
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
@@ -152,14 +187,14 @@ async def format_transcript(
             )
     except Exception as exc:
         logger.warning("groq_format_failed", error=str(exc))
-        return ""
+        return None
     if response.status_code >= 400:
         logger.warning(
             "groq_format_failed",
             status=response.status_code,
             detail=(response.text or "")[:240],
         )
-        return ""
+        return None
     data = response.json()
     text = (
         data.get("choices", [{}])[0]

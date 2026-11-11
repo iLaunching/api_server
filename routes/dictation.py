@@ -440,13 +440,14 @@ async def dictation_websocket(websocket: WebSocket, session_id: str):
                 task.cancel()
             if cancel_event.is_set():
                 return
-            rewritten = ""
+            rewritten = None
             if format_task in done and not format_task.cancelled():
                 try:
-                    rewritten = format_task.result() or ""
+                    rewritten = format_task.result()
                 except Exception as exc:
                     logger.warning("dictation_format_failed", error=str(exc))
-            if rewritten:
+                    rewritten = None
+            if rewritten is not None:
                 final_text = rewritten
                 formatted = True
         if cancel_event.is_set():

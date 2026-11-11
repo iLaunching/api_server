@@ -7,7 +7,9 @@ text (not the audio) goes to gpt-oss-20b. The phone still sees one stream.
 
 from __future__ import annotations
 
+import asyncio
 import os
+import re
 
 import httpx
 import structlog
@@ -30,6 +32,8 @@ GROQ_ASR_MODEL = _env_secret("GROQ_ASR_MODEL") or "whisper-large-v3-turbo"
 GROQ_ASR_LANGUAGE = _env_secret("GROQ_ASR_LANGUAGE") or "en"
 GROQ_FORMAT_MODEL = _env_secret("GROQ_FORMAT_MODEL") or "openai/gpt-oss-20b"
 
+_RETRY_AFTER_RE = re.compile(r"try again in\s+(\d+(?:\.\d+)?)\s*s", re.IGNORECASE)
+
 
 class GroqDictationError(RuntimeError):
     def __init__(self, status_code: int, message: str):
@@ -42,7 +46,22 @@ def groq_configured() -> bool:
     return bool(GROQ_API_KEY)
 
 
-async def transcribe_pcm16(pcm16: bytes, sample_rate: int = 16_000) -> str:
+def _retry_after_seconds(detail: str, fallback: float = 3.0) -> float:
+    match = _RETRY_AFTER_RE.search(detail or "")
+    if not match:
+        return fallback
+    try:
+        return max(0.5, min(15.0, float(match.group(1))))
+    except ValueError:
+        return fallback
+
+
+async def transcribe_pcm16(
+    pcm16: bytes,
+    sample_rate: int = 16_000,
+    *,
+    retry_rate_limits: bool = False,
+) -> str:
     if not GROQ_API_KEY:
         raise GroqDictationError(503, "Speech service is not configured yet.")
     if len(pcm16) < sample_rate * 2 // 10:
@@ -56,32 +75,44 @@ async def transcribe_pcm16(pcm16: bytes, sample_rate: int = 16_000) -> str:
     }
     if GROQ_ASR_LANGUAGE:
         data["language"] = GROQ_ASR_LANGUAGE
-    try:
-        async with httpx.AsyncClient(timeout=45.0) as client:
-            response = await client.post(
-                f"{GROQ_BASE_URL}/audio/transcriptions",
-                headers=headers,
-                files={"file": ("speech.wav", wav, "audio/wav")},
-                data=data,
+
+    attempts = 4 if retry_rate_limits else 1
+    last_error: GroqDictationError | None = None
+    async with httpx.AsyncClient(timeout=45.0) as client:
+        for attempt in range(attempts):
+            try:
+                response = await client.post(
+                    f"{GROQ_BASE_URL}/audio/transcriptions",
+                    headers=headers,
+                    files={"file": ("speech.wav", wav, "audio/wav")},
+                    data=data,
+                )
+            except httpx.TimeoutException as exc:
+                raise GroqDictationError(504, "Speech provider timed out.") from exc
+            except httpx.HTTPError as exc:
+                raise GroqDictationError(502, "Could not reach speech provider.") from exc
+            if response.status_code < 400:
+                payload = response.json()
+                return (payload.get("text") or "").strip()
+            detail = (response.text or "")[:240]
+            logger.warning(
+                "groq_asr_failed",
+                status=response.status_code,
+                model=GROQ_ASR_MODEL,
+                detail=detail,
+                attempt=attempt + 1,
             )
-    except httpx.TimeoutException as exc:
-        raise GroqDictationError(504, "Speech provider timed out.") from exc
-    except httpx.HTTPError as exc:
-        raise GroqDictationError(502, "Could not reach speech provider.") from exc
-    if response.status_code >= 400:
-        detail = (response.text or "")[:240]
-        logger.warning(
-            "groq_asr_failed",
-            status=response.status_code,
-            model=GROQ_ASR_MODEL,
-            detail=detail,
-        )
-        raise GroqDictationError(
-            response.status_code,
-            f"Speech provider error ({response.status_code}).",
-        )
-    payload = response.json()
-    return (payload.get("text") or "").strip()
+            last_error = GroqDictationError(
+                response.status_code,
+                f"Speech provider error ({response.status_code}).",
+            )
+            if response.status_code == 429 and attempt + 1 < attempts:
+                await asyncio.sleep(_retry_after_seconds(detail))
+                continue
+            raise last_error
+    if last_error:
+        raise last_error
+    return ""
 
 
 async def format_transcript(

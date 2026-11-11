@@ -361,8 +361,8 @@ async def dictation_websocket(websocket: WebSocket, session_id: str):
                 if room:
                     pcm.extend(raw_bytes[:room])
                 meta["expires_at"] = time.time() + _SESSION_TTL_SEC
-                # Refresh a partial about once a second of new audio.
-                if len(pcm) - last_partial_at >= 16_000 * 2 and not partial_lock_held:
+                # Free-tier Whisper is ~20 RPM. One partial every ~4s leaves room for Stop.
+                if len(pcm) - last_partial_at >= 16_000 * 2 * 4 and not partial_lock_held:
                     last_partial_at = len(pcm)
                     asyncio.create_task(emit_partial(bytes(pcm)))
                 continue
@@ -396,7 +396,10 @@ async def dictation_websocket(websocket: WebSocket, session_id: str):
                     )
                     break
                 try:
-                    asr_text = await transcribe_pcm16(bytes(pcm))
+                    asr_text = await transcribe_pcm16(
+                        bytes(pcm),
+                        retry_rate_limits=True,
+                    )
                 except GroqDictationError as exc:
                     await websocket.send_json(
                         {

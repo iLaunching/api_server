@@ -23,11 +23,16 @@ def _env_secret(name: str) -> str:
 
 
 FIREWORKS_API_KEY = _env_secret("FIREWORKS_API_KEY")
+# audio-turbo has no healthy upstream (503 before auth). audio-prod still serves whisper-v3.
 FIREWORKS_ASR_BASE_URL = (
     _env_secret("FIREWORKS_ASR_BASE_URL")
-    or "https://audio-turbo.us-virginia-1.direct.fireworks.ai/v1"
+    or "https://audio-prod.us-virginia-1.direct.fireworks.ai/v1"
 ).rstrip("/")
-FIREWORKS_ASR_MODEL = _env_secret("FIREWORKS_ASR_MODEL") or "whisper-v3-turbo"
+FIREWORKS_ASR_MODEL = _env_secret("FIREWORKS_ASR_MODEL") or "whisper-v3"
+_ASR_FALLBACK = (
+    "https://audio-prod.us-virginia-1.direct.fireworks.ai/v1",
+    "whisper-v3",
+)
 FIREWORKS_CHAT_URL = (
     _env_secret("FIREWORKS_CHAT_URL")
     or "https://api.fireworks.ai/inference/v1/chat/completions"
@@ -56,34 +61,45 @@ async def transcribe_pcm16(pcm16: bytes, sample_rate: int = 16_000) -> str:
         return ""
     wav = pcm16_to_wav_bytes(pcm16, sample_rate=sample_rate)
     headers = {"Authorization": f"Bearer {FIREWORKS_API_KEY}"}
-    files = {"file": ("speech.wav", wav, "audio/wav")}
-    data = {"model": FIREWORKS_ASR_MODEL, "response_format": "json", "temperature": "0"}
-    try:
-        async with httpx.AsyncClient(timeout=45.0) as client:
-            response = await client.post(
-                f"{FIREWORKS_ASR_BASE_URL}/audio/transcriptions",
-                headers=headers,
-                files=files,
-                data=data,
+    attempts = [(FIREWORKS_ASR_BASE_URL, FIREWORKS_ASR_MODEL)]
+    if (FIREWORKS_ASR_BASE_URL, FIREWORKS_ASR_MODEL) != _ASR_FALLBACK:
+        attempts.append(_ASR_FALLBACK)
+
+    last_error: FireworksDictationError | None = None
+    async with httpx.AsyncClient(timeout=45.0) as client:
+        for base_url, model in attempts:
+            try:
+                response = await client.post(
+                    f"{base_url}/audio/transcriptions",
+                    headers=headers,
+                    files={"file": ("speech.wav", wav, "audio/wav")},
+                    data={"model": model, "response_format": "json", "temperature": "0"},
+                )
+            except httpx.TimeoutException as exc:
+                raise FireworksDictationError(504, "Speech provider timed out.") from exc
+            except httpx.HTTPError as exc:
+                raise FireworksDictationError(502, "Could not reach speech provider.") from exc
+            if response.status_code < 400:
+                payload = response.json()
+                return (payload.get("text") or "").strip()
+            detail = (response.text or "")[:240]
+            logger.warning(
+                "fireworks_asr_failed",
+                status=response.status_code,
+                model=model,
+                detail=detail,
             )
-    except httpx.TimeoutException as exc:
-        raise FireworksDictationError(504, "Speech provider timed out.") from exc
-    except httpx.HTTPError as exc:
-        raise FireworksDictationError(502, "Could not reach speech provider.") from exc
-    if response.status_code >= 400:
-        detail = (response.text or "")[:240]
-        logger.warning(
-            "fireworks_asr_failed",
-            status=response.status_code,
-            model=FIREWORKS_ASR_MODEL,
-            detail=detail,
-        )
-        raise FireworksDictationError(
-            response.status_code,
-            f"Speech provider error ({response.status_code}).",
-        )
-    payload = response.json()
-    return (payload.get("text") or "").strip()
+            last_error = FireworksDictationError(
+                response.status_code,
+                f"Speech provider error ({response.status_code}).",
+            )
+            # Turbo's pool is empty. Try the full Whisper host once.
+            if response.status_code == 503 and model != _ASR_FALLBACK[1]:
+                continue
+            raise last_error
+    if last_error:
+        raise last_error
+    return ""
 
 
 async def format_transcript(

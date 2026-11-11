@@ -140,15 +140,82 @@ async def transcribe_pcm16(
     return ""
 
 
+_CASUAL_STYLE_RULES = (
+    "Capitalize the start of sentences. "
+    "Omit the period at the end of a one-line message. "
+    "Do not rewrite words."
+)
+
+
+def _style_block(style_rules: str) -> str:
+    rules = (style_rules or "").strip()[:500] or _CASUAL_STYLE_RULES
+    return (
+        "\n\nSTYLE RULES FOR THIS REQUEST:\n"
+        f"{rules}\n"
+        "These rules control casing, punctuation, and tone only.\n"
+    )
+
+
+async def draft_style_rules(description: str) -> str:
+    """Turn a short voice description into paste-style rules. Not used on the live paste path."""
+    if not GROQ_API_KEY or not description.strip():
+        raise GroqDictationError(503, "Speech service is not configured yet.")
+    body = {
+        "model": GROQ_FORMAT_MODEL,
+        "temperature": 0.0,
+        "max_tokens": 160,
+        "reasoning_effort": "low",
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "Write a short dictation style block for composer paste. "
+                    "Return ONLY the rules, four lines or fewer. "
+                    "Rules may set casing, punctuation, and energy. "
+                    "They must not ask to change the speaker's words. "
+                    "Do not write a sample message."
+                ),
+            },
+            {"role": "user", "content": description.strip()[:400]},
+        ],
+    }
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            response = await client.post(
+                f"{GROQ_BASE_URL}/chat/completions",
+                headers=headers,
+                json=body,
+            )
+    except Exception as exc:
+        raise GroqDictationError(502, "Could not draft a style.") from exc
+    if response.status_code >= 400:
+        raise GroqDictationError(response.status_code, "Could not draft a style.")
+    text = (
+        response.json()
+        .get("choices", [{}])[0]
+        .get("message", {})
+        .get("content", "")
+        .strip()
+    )
+    if not text:
+        raise GroqDictationError(502, "Could not draft a style.")
+    return text[:500]
+
+
 async def format_transcript(
     asr_text: str,
     *,
     before_text: str = "",
+    style_rules: str = "",
 ) -> str | None:
     """Rewrite the transcript. None means the call failed and the caller should keep raw text. "" means no speech."""
     if not GROQ_API_KEY or not asr_text.strip():
         return None
-    system = _FORMAT_SYSTEM
+    system = _FORMAT_SYSTEM + _style_block(style_rules)
     if GROQ_USER_DICTIONARY:
         terms = ", ".join(
             part.strip() for part in GROQ_USER_DICTIONARY.split(",") if part.strip()

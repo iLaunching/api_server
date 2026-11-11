@@ -30,6 +30,7 @@ from services.dictation_asr import (
 )
 from services.groq_dictation import (
     GroqDictationError,
+    draft_style_rules,
     format_transcript,
     groq_configured,
     transcribe_pcm16,
@@ -56,6 +57,7 @@ class CreateSessionRequest(BaseModel):
     before_text: str = ""
     selected_text: str = ""
     after_text: str = ""
+    style_rules: str = ""
 
 
 class CreateSessionResponse(BaseModel):
@@ -63,6 +65,14 @@ class CreateSessionResponse(BaseModel):
     expires_at: float
     provider_configured: bool
     sample_rate: int = 16_000
+
+
+class StyleDraftRequest(BaseModel):
+    description: str = Field(..., min_length=1, max_length=400)
+
+
+class StyleDraftResponse(BaseModel):
+    rules: str
 
 
 class IntentFormatRequestBody(BaseModel):
@@ -122,6 +132,7 @@ async def create_dictation_session(
             "selected_text": (body.selected_text or "")[:200],
             "after_text": (body.after_text or "")[:500],
             "field_kind": body.field_kind or "composer",
+            "style_rules": (body.style_rules or "")[:500],
         },
         "pcm": bytearray(),
         "format_on": True,
@@ -140,6 +151,22 @@ async def create_dictation_session(
         expires_at=expires_at,
         provider_configured=groq_configured(),
     )
+
+
+@router.post("/styles/draft", response_model=StyleDraftResponse)
+async def draft_composer_style(
+    body: StyleDraftRequest,
+    current_user: dict = Depends(get_current_session),
+):
+    """One-shot style draft for room setup. Not part of the live paste path."""
+    _ = current_user
+    if not groq_configured():
+        raise HTTPException(status_code=503, detail="Speech service is not configured yet.")
+    try:
+        rules = await draft_style_rules(body.description)
+    except GroqDictationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+    return StyleDraftResponse(rules=rules)
 
 
 @router.post("/format", response_model=IntentFormatResponseBody)
@@ -429,6 +456,7 @@ async def dictation_websocket(websocket: WebSocket, session_id: str):
                 format_transcript(
                     asr_text,
                     before_text=ctx.get("before_text", ""),
+                    style_rules=ctx.get("style_rules", ""),
                 )
             )
             cancel_waiter = asyncio.create_task(cancel_event.wait())

@@ -42,6 +42,12 @@ router = APIRouter(prefix="/dictation", tags=["dictation"])
 # In-memory short-lived session registry (single-instance MVP; Redis later if needed).
 _SESSIONS: Dict[str, Dict[str, Any]] = {}
 _SESSION_TTL_SEC = int(os.getenv("DICTATION_SESSION_TTL_SEC", "120"))
+# Keep buffered PCM briefly after a dropped socket so the phone can resume.
+_RESUME_GRACE_SEC = int(os.getenv("DICTATION_RESUME_GRACE_SEC", "45"))
+# 0.5s of 16 kHz mono PCM16. Shorter clips make Whisper invent words.
+_MIN_AUDIO_BYTES = 16_000
+_MAX_AUDIO_BYTES = 16_000 * 2 * 60
+_PARTIAL_BYTES = 16_000 * 2 * 4
 
 
 class CreateSessionRequest(BaseModel):
@@ -117,6 +123,11 @@ async def create_dictation_session(
             "after_text": (body.after_text or "")[:500],
             "field_kind": body.field_kind or "composer",
         },
+        "pcm": bytearray(),
+        "format_on": True,
+        "started": False,
+        "cancelled": False,
+        "completed": False,
     }
     logger.info(
         "dictation_session_created",
@@ -252,7 +263,7 @@ async def dictation_websocket(websocket: WebSocket, session_id: str):
     Live dictation stream. Audio is PCM16 mono 16 kHz, sent as binary frames.
 
     Client → server:
-      { "type": "start", "format": true, "mode": "dictation" }
+      { "type": "start"|"resume", "format": true, "mode": "dictation" }
       <binary pcm16>
       { "type": "end" }
       { "type": "cancel" }
@@ -262,11 +273,22 @@ async def dictation_websocket(websocket: WebSocket, session_id: str):
       { "type": "partial", "text" }
       { "type": "final", "text", "asr_text", "formatted" }
       { "type": "error", "code", "message" }
+      { "type": "cancelled" }
     """
     await websocket.accept()
     _purge_expired()
     meta = _SESSIONS.get(session_id)
     if not meta or meta.get("expires_at", 0) < time.time():
+        await websocket.send_json(
+            {
+                "type": "error",
+                "code": "session_expired",
+                "message": "Dictation session expired. Start again.",
+            }
+        )
+        await websocket.close()
+        return
+    if meta.get("cancelled") or meta.get("completed"):
         await websocket.send_json(
             {
                 "type": "error",
@@ -318,20 +340,39 @@ async def dictation_websocket(websocket: WebSocket, session_id: str):
         _SESSIONS.pop(session_id, None)
         return
 
+    if "pcm" not in meta or not isinstance(meta["pcm"], (bytearray, bytes)):
+        meta["pcm"] = bytearray()
+    elif isinstance(meta["pcm"], bytes):
+        meta["pcm"] = bytearray(meta["pcm"])
+
+    pcm: bytearray = meta["pcm"]
+    format_on = bool(meta.get("format_on", True))
+    started = bool(meta.get("started", False))
+    stop_partials = False
+    discard_session = False
+    keep_for_resume = False
+    last_partial_at = len(pcm)
+    partial_lock_held = False
+    cancel_event = asyncio.Event()
+    finalize_task: asyncio.Task | None = None
+
     await websocket.send_json(
-        {"type": "ready", "provider_configured": True, "session_id": session_id}
+        {
+            "type": "ready",
+            "provider_configured": True,
+            "session_id": session_id,
+            "buffered_bytes": len(pcm),
+        }
     )
 
-    pcm = bytearray()
-    format_on = True
-    started = False
-    closed = False
-    last_partial_at = 0
-    partial_lock_held = False
-
     async def emit_partial(snapshot: bytes) -> None:
-        nonlocal last_partial_at, partial_lock_held
-        if closed or partial_lock_held or len(snapshot) < 16_000:
+        nonlocal partial_lock_held
+        if (
+            stop_partials
+            or cancel_event.is_set()
+            or partial_lock_held
+            or len(snapshot) < _MIN_AUDIO_BYTES
+        ):
             return
         partial_lock_held = True
         try:
@@ -341,28 +382,117 @@ async def dictation_websocket(websocket: WebSocket, session_id: str):
             return
         finally:
             partial_lock_held = False
-        if closed or not text:
+        if stop_partials or cancel_event.is_set() or not text:
             return
         try:
             await websocket.send_json({"type": "partial", "text": text})
         except Exception:
             return
 
+    async def finalize_stream() -> None:
+        nonlocal discard_session
+        while partial_lock_held:
+            await asyncio.sleep(0.05)
+        if cancel_event.is_set():
+            return
+        if len(pcm) < _MIN_AUDIO_BYTES:
+            await websocket.send_json(
+                {
+                    "type": "error",
+                    "code": "empty_audio",
+                    "message": "No speech detected.",
+                }
+            )
+            discard_session = True
+            return
+        try:
+            asr_text = await transcribe_pcm16(bytes(pcm), retry_rate_limits=True)
+        except GroqDictationError as exc:
+            if cancel_event.is_set():
+                return
+            await websocket.send_json(
+                {
+                    "type": "error",
+                    "code": "asr_failed",
+                    "message": exc.message,
+                }
+            )
+            discard_session = True
+            return
+        if cancel_event.is_set():
+            return
+        formatted = False
+        final_text = asr_text
+        if format_on and asr_text and not cancel_event.is_set():
+            ctx = meta.get("context") or {}
+            format_task = asyncio.create_task(
+                format_transcript(
+                    asr_text,
+                    before_text=ctx.get("before_text", ""),
+                )
+            )
+            cancel_waiter = asyncio.create_task(cancel_event.wait())
+            done, pending = await asyncio.wait(
+                {format_task, cancel_waiter},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for task in pending:
+                task.cancel()
+            if cancel_event.is_set():
+                return
+            rewritten = ""
+            if format_task in done and not format_task.cancelled():
+                try:
+                    rewritten = format_task.result() or ""
+                except Exception as exc:
+                    logger.warning("dictation_format_failed", error=str(exc))
+            if rewritten:
+                final_text = rewritten
+                formatted = True
+        if cancel_event.is_set():
+            return
+        await websocket.send_json(
+            {
+                "type": "final",
+                "text": final_text,
+                "asr_text": asr_text,
+                "formatted": formatted,
+            }
+        )
+        meta["completed"] = True
+        discard_session = True
+
+    def mark_cancelled() -> None:
+        nonlocal discard_session, stop_partials
+        stop_partials = True
+        meta["cancelled"] = True
+        cancel_event.set()
+        discard_session = True
+        if finalize_task and not finalize_task.done():
+            finalize_task.cancel()
+
     try:
         while True:
-            message = await websocket.receive()
+            if finalize_task and finalize_task.done():
+                exc = finalize_task.exception()
+                if exc and not isinstance(exc, asyncio.CancelledError):
+                    logger.warning("dictation_finalize_failed", error=str(exc))
+                break
+            try:
+                message = await asyncio.wait_for(websocket.receive(), timeout=0.05)
+            except asyncio.TimeoutError:
+                continue
             if message.get("type") == "websocket.disconnect":
                 break
             raw_bytes = message.get("bytes")
             if raw_bytes:
-                if not started:
+                if not started or finalize_task is not None or cancel_event.is_set():
                     continue
-                room = max(0, 16_000 * 2 * 60 - len(pcm))
+                room = max(0, _MAX_AUDIO_BYTES - len(pcm))
                 if room:
                     pcm.extend(raw_bytes[:room])
                 meta["expires_at"] = time.time() + _SESSION_TTL_SEC
-                # Free-tier Whisper is ~20 RPM. One partial every ~4s leaves room for Stop.
-                if len(pcm) - last_partial_at >= 16_000 * 2 * 4 and not partial_lock_held:
+                if len(pcm) - last_partial_at >= _PARTIAL_BYTES and not partial_lock_held:
                     last_partial_at = len(pcm)
                     asyncio.create_task(emit_partial(bytes(pcm)))
                 continue
@@ -374,63 +504,50 @@ async def dictation_websocket(websocket: WebSocket, session_id: str):
             except json.JSONDecodeError:
                 continue
             kind = payload.get("type")
-            if kind == "start":
+            if kind in ("start", "resume"):
                 started = True
-                format_on = bool(payload.get("format", True))
+                meta["started"] = True
+                format_on = bool(payload.get("format", format_on))
+                meta["format_on"] = format_on
                 continue
             if kind == "cancel":
-                closed = True
-                await websocket.send_json({"type": "cancelled"})
-                break
-            if kind == "end":
-                closed = True
-                while partial_lock_held:
-                    await asyncio.sleep(0.05)
-                if len(pcm) < 16_000 * 2 // 10:
-                    await websocket.send_json(
-                        {
-                            "type": "error",
-                            "code": "empty_audio",
-                            "message": "No speech detected.",
-                        }
-                    )
-                    break
+                mark_cancelled()
                 try:
-                    asr_text = await transcribe_pcm16(
-                        bytes(pcm),
-                        retry_rate_limits=True,
-                    )
-                except GroqDictationError as exc:
-                    await websocket.send_json(
-                        {
-                            "type": "error",
-                            "code": "asr_failed",
-                            "message": exc.message,
-                        }
-                    )
-                    break
-                formatted = False
-                final_text = asr_text
-                if format_on and asr_text:
-                    ctx = meta.get("context") or {}
-                    rewritten = await format_transcript(
-                        asr_text,
-                        before_text=ctx.get("before_text", ""),
-                    )
-                    if rewritten:
-                        final_text = rewritten
-                        formatted = True
-                await websocket.send_json(
-                    {
-                        "type": "final",
-                        "text": final_text,
-                        "asr_text": asr_text,
-                        "formatted": formatted,
-                    }
-                )
+                    await websocket.send_json({"type": "cancelled"})
+                except Exception:
+                    pass
                 break
+            if kind == "end" and finalize_task is None:
+                stop_partials = True
+                finalize_task = asyncio.create_task(finalize_stream())
     except WebSocketDisconnect:
         logger.info("dictation_ws_disconnected", session_id=session_id)
+    except asyncio.CancelledError:
+        mark_cancelled()
+        raise
     finally:
-        closed = True
-        _SESSIONS.pop(session_id, None)
+        stop_partials = True
+        if meta.get("cancelled") or meta.get("completed") or discard_session:
+            if finalize_task and not finalize_task.done():
+                finalize_task.cancel()
+                cancel_event.set()
+            _SESSIONS.pop(session_id, None)
+        else:
+            # Unexpected drop mid-speech: keep PCM so the phone can resume.
+            keep_for_resume = True
+            meta["pcm"] = pcm
+            meta["format_on"] = format_on
+            meta["started"] = started
+            meta["expires_at"] = time.time() + _RESUME_GRACE_SEC
+            if finalize_task and not finalize_task.done():
+                # Drop was during finalize — abandon cleanup spend.
+                cancel_event.set()
+                finalize_task.cancel()
+                _SESSIONS.pop(session_id, None)
+                keep_for_resume = False
+        if keep_for_resume:
+            logger.info(
+                "dictation_ws_kept_for_resume",
+                session_id=session_id,
+                buffered_bytes=len(pcm),
+            )

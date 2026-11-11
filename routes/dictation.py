@@ -7,7 +7,9 @@ report provider_configured=false and the WS fails closed with not_configured.
 
 from __future__ import annotations
 
+import asyncio
 import base64
+import json
 import os
 import time
 import uuid
@@ -21,11 +23,16 @@ import structlog
 from auth.middleware import get_current_session
 from services.dictation_asr import (
     ASRProviderError,
-    floats_to_wav_bytes,
     format_intent,
     pcm16_to_wav_bytes,
     provider_configured,
     transcribe_wav,
+)
+from services.fireworks_dictation import (
+    FireworksDictationError,
+    fireworks_configured,
+    format_transcript,
+    transcribe_pcm16,
 )
 
 logger = structlog.get_logger()
@@ -115,12 +122,12 @@ async def create_dictation_session(
         "dictation_session_created",
         session_id=session_id,
         user_id=user_id,
-        provider_configured=provider_configured(),
+        provider_configured=fireworks_configured(),
     )
     return CreateSessionResponse(
         session_id=session_id,
         expires_at=expires_at,
-        provider_configured=provider_configured(),
+        provider_configured=fireworks_configured(),
     )
 
 
@@ -242,19 +249,19 @@ async def transcribe_dictation_audio(
 @router.websocket("/ws/{session_id}")
 async def dictation_websocket(websocket: WebSocket, session_id: str):
     """
-    Bidirectional dictation stream.
+    Live dictation stream. Audio is PCM16 mono 16 kHz, sent as binary frames.
 
     Client → server:
-      { "type": "auth", "token": "<jwt>" }   (first message if not already validated)
-      { "type": "audio", "samples": [f32, ...] }  or  { "type": "audio_b64", "pcm16_b64": "..." }
-      { "type": "commit" }
+      { "type": "start", "format": true, "mode": "dictation" }
+      <binary pcm16>
+      { "type": "end" }
       { "type": "cancel" }
 
     Server → client:
-      { "type": "ready", "provider_configured": bool }
-      { "type": "partial", "text": "..." }
-      { "type": "final", "text": "..." }
-      { "type": "error", "code": "...", "message": "..." }
+      { "type": "ready" }
+      { "type": "partial", "text" }
+      { "type": "final", "text", "asr_text", "formatted" }
+      { "type": "error", "code", "message" }
     """
     await websocket.accept()
     _purge_expired()
@@ -270,30 +277,17 @@ async def dictation_websocket(websocket: WebSocket, session_id: str):
         await websocket.close()
         return
 
-    # Auth: prefer Authorization header / query; else first auth message.
     token = websocket.query_params.get("access_token") or websocket.query_params.get("token")
     if not token:
         auth_header = websocket.headers.get("authorization") or ""
         if auth_header.lower().startswith("bearer "):
             token = auth_header[7:].strip()
-
     if not token:
-        try:
-            first = await websocket.receive_json()
-        except WebSocketDisconnect:
-            return
-        if first.get("type") != "auth" or not first.get("token"):
-            await websocket.send_json(
-                {
-                    "type": "error",
-                    "code": "unauthorized",
-                    "message": "Missing auth token.",
-                }
-            )
-            await websocket.close()
-            return
-        token = str(first["token"])
-
+        await websocket.send_json(
+            {"type": "error", "code": "unauthorized", "message": "Missing auth token."}
+        )
+        await websocket.close()
+        return
     try:
         session = await get_current_session(
             HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
@@ -301,41 +295,18 @@ async def dictation_websocket(websocket: WebSocket, session_id: str):
         user_id = str(session.get("user", {}).get("id", ""))
         if meta.get("user_id") and user_id and meta["user_id"] != user_id:
             await websocket.send_json(
-                {
-                    "type": "error",
-                    "code": "unauthorized",
-                    "message": "Session owner mismatch.",
-                }
+                {"type": "error", "code": "unauthorized", "message": "Session owner mismatch."}
             )
             await websocket.close()
             return
-    except HTTPException:
+    except Exception:
         await websocket.send_json(
-            {
-                "type": "error",
-                "code": "unauthorized",
-                "message": "Invalid or expired token.",
-            }
-        )
-        await websocket.close()
-        return
-    except Exception as exc:
-        logger.warning("dictation_ws_auth_failed", error=str(exc))
-        await websocket.send_json(
-            {
-                "type": "error",
-                "code": "unauthorized",
-                "message": "Auth failed.",
-            }
+            {"type": "error", "code": "unauthorized", "message": "Invalid or expired token."}
         )
         await websocket.close()
         return
 
-    configured = provider_configured()
-    await websocket.send_json(
-        {"type": "ready", "provider_configured": configured, "session_id": session_id}
-    )
-    if not configured:
+    if not fireworks_configured():
         await websocket.send_json(
             {
                 "type": "error",
@@ -343,43 +314,79 @@ async def dictation_websocket(websocket: WebSocket, session_id: str):
                 "message": "Speech service is not configured yet.",
             }
         )
-        # Keep socket briefly so client can read the error, then close.
         await websocket.close()
         _SESSIONS.pop(session_id, None)
         return
 
-    samples: List[float] = []
+    await websocket.send_json(
+        {"type": "ready", "provider_configured": True, "session_id": session_id}
+    )
+
+    pcm = bytearray()
+    format_on = True
+    started = False
+    closed = False
+    last_partial_at = 0
+    partial_lock_held = False
+
+    async def emit_partial(snapshot: bytes) -> None:
+        nonlocal last_partial_at, partial_lock_held
+        if closed or partial_lock_held or len(snapshot) < 16_000:
+            return
+        partial_lock_held = True
+        try:
+            text = await transcribe_pcm16(snapshot)
+        except FireworksDictationError as exc:
+            logger.warning("dictation_partial_failed", status=exc.status_code)
+            return
+        finally:
+            partial_lock_held = False
+        if closed or not text:
+            return
+        try:
+            await websocket.send_json({"type": "partial", "text": text})
+        except Exception:
+            return
+
     try:
         while True:
-            message = await websocket.receive_json()
-            msg_type = message.get("type")
-            if msg_type == "cancel":
-                samples.clear()
+            message = await websocket.receive()
+            if message.get("type") == "websocket.disconnect":
+                break
+            raw_bytes = message.get("bytes")
+            if raw_bytes:
+                if not started:
+                    continue
+                room = max(0, 16_000 * 2 * 60 - len(pcm))
+                if room:
+                    pcm.extend(raw_bytes[:room])
+                meta["expires_at"] = time.time() + _SESSION_TTL_SEC
+                # Refresh a partial about once a second of new audio.
+                if len(pcm) - last_partial_at >= 16_000 * 2 and not partial_lock_held:
+                    last_partial_at = len(pcm)
+                    asyncio.create_task(emit_partial(bytes(pcm)))
+                continue
+            raw_text = message.get("text")
+            if not raw_text:
+                continue
+            try:
+                payload = json.loads(raw_text)
+            except json.JSONDecodeError:
+                continue
+            kind = payload.get("type")
+            if kind == "start":
+                started = True
+                format_on = bool(payload.get("format", True))
+                continue
+            if kind == "cancel":
+                closed = True
                 await websocket.send_json({"type": "cancelled"})
                 break
-            if msg_type == "audio":
-                chunk = message.get("samples") or []
-                if isinstance(chunk, list) and chunk:
-                    # Cap buffer (~60s @ 16kHz)
-                    room = max(0, 16_000 * 60 - len(samples))
-                    if room:
-                        samples.extend(float(x) for x in chunk[:room])
-                continue
-            if msg_type == "audio_b64":
-                # Optional: PCM16 LE little-endian mono @ 16 kHz
-                raw = base64.b64decode(message.get("pcm16_b64") or "")
-                if raw:
-                    import struct as _struct
-
-                    count = len(raw) // 2
-                    room = max(0, 16_000 * 60 - len(samples))
-                    take = min(count, room)
-                    for i in range(take):
-                        (v,) = _struct.unpack_from("<h", raw, i * 2)
-                        samples.append(v / 32767.0)
-                continue
-            if msg_type == "commit":
-                if len(samples) < 1600:  # < ~100 ms
+            if kind == "end":
+                closed = True
+                while partial_lock_held:
+                    await asyncio.sleep(0.05)
+                if len(pcm) < 16_000 * 2 // 10:
                     await websocket.send_json(
                         {
                             "type": "error",
@@ -388,25 +395,39 @@ async def dictation_websocket(websocket: WebSocket, session_id: str):
                         }
                     )
                     break
-                wav = floats_to_wav_bytes(samples, sample_rate=16_000)
                 try:
-                    text = await transcribe_wav(wav)
-                except RuntimeError as exc:
-                    code = str(exc)
+                    asr_text = await transcribe_pcm16(bytes(pcm))
+                except FireworksDictationError as exc:
                     await websocket.send_json(
                         {
                             "type": "error",
-                            "code": "asr_failed" if "provider" in code else code,
-                            "message": "Speech recognition failed.",
+                            "code": "asr_failed",
+                            "message": exc.message,
                         }
                     )
                     break
+                formatted = False
+                final_text = asr_text
+                if format_on and asr_text:
+                    ctx = meta.get("context") or {}
+                    rewritten = await format_transcript(
+                        asr_text,
+                        before_text=ctx.get("before_text", ""),
+                    )
+                    if rewritten:
+                        final_text = rewritten
+                        formatted = True
                 await websocket.send_json(
-                    {"type": "final", "text": text or "", "is_final": True}
+                    {
+                        "type": "final",
+                        "text": final_text,
+                        "asr_text": asr_text,
+                        "formatted": formatted,
+                    }
                 )
                 break
-            # ignore unknown
     except WebSocketDisconnect:
         logger.info("dictation_ws_disconnected", session_id=session_id)
     finally:
+        closed = True
         _SESSIONS.pop(session_id, None)

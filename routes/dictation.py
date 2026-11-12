@@ -36,6 +36,9 @@ from services.groq_dictation import (
     transcribe_pcm16,
 )
 from services.style_compiler import StyleCompilationInput, compile_style_contract
+from services import dictation_style_library as style_library
+from config.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = structlog.get_logger()
 
@@ -193,6 +196,133 @@ async def compile_composer_style(
     except GroqDictationError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
     return StyleCompileResponse(contract=contract)
+
+
+class LibraryInstallRequest(BaseModel):
+    catalog_style_id: str = Field(..., min_length=1, max_length=120)
+    catalog_version: int | None = None
+
+
+class LibraryAssignRequest(BaseModel):
+    style_id: str = Field(..., min_length=1)
+    room_id: str = Field(..., min_length=1, max_length=120)
+
+
+class LibraryForkRequest(BaseModel):
+    style_id: str = Field(..., min_length=1)
+    name: str | None = None
+    explanation: str | None = None
+    rules: str | None = None
+    compiled_contract: Dict[str, Any] | None = None
+    bound_room_id: str | None = None
+
+
+class CatalogRatingRequest(BaseModel):
+    stars: int = Field(..., ge=1, le=5)
+
+
+def _current_user_id(current_user: dict) -> str:
+    return str(current_user.get("user", {}).get("id", "") or "")
+
+
+@router.get("/library")
+async def get_dictation_library(
+    current_user: dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    user_id = _current_user_id(current_user)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return await style_library.list_library(db, user_id)
+
+
+@router.post("/library/install")
+async def install_dictation_style(
+    body: LibraryInstallRequest,
+    current_user: dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    user_id = _current_user_id(current_user)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return await style_library.install_catalog_style(
+        db,
+        user_id,
+        body.catalog_style_id,
+        catalog_version=body.catalog_version,
+    )
+
+
+@router.post("/library/assign")
+async def assign_dictation_style(
+    body: LibraryAssignRequest,
+    current_user: dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    user_id = _current_user_id(current_user)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return await style_library.assign_to_room(db, user_id, body.style_id, body.room_id)
+
+
+@router.post("/library/fork")
+async def fork_dictation_style(
+    body: LibraryForkRequest,
+    current_user: dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    user_id = _current_user_id(current_user)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return await style_library.fork_style(
+        db,
+        user_id,
+        body.style_id,
+        name=body.name,
+        explanation=body.explanation,
+        rules=body.rules,
+        compiled_contract=body.compiled_contract,
+        bound_room_id=body.bound_room_id,
+    )
+
+
+@router.delete("/library/styles/{style_id}")
+async def delete_dictation_style(
+    style_id: str,
+    current_user: dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    user_id = _current_user_id(current_user)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return await style_library.delete_style(db, user_id, style_id)
+
+
+@router.get("/catalog/stats")
+async def get_dictation_catalog_stats(
+    ids: str | None = None,
+    current_user: dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    _ = current_user
+    style_ids = [s.strip() for s in (ids or "").split(",") if s.strip()] or None
+    stats = await style_library.get_stats_map(db, style_ids)
+    return {"stats": stats}
+
+
+@router.post("/catalog/styles/{catalog_style_id}/rating")
+async def rate_dictation_catalog_style(
+    catalog_style_id: str,
+    body: CatalogRatingRequest,
+    current_user: dict = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    user_id = _current_user_id(current_user)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return await style_library.rate_catalog_style(
+        db, user_id, catalog_style_id, body.stars
+    )
 
 
 @router.post("/format", response_model=IntentFormatResponseBody)

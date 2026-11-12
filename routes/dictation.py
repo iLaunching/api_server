@@ -35,6 +35,7 @@ from services.groq_dictation import (
     groq_configured,
     transcribe_pcm16,
 )
+from services.style_compiler import StyleCompilationInput, compile_style_contract
 
 logger = structlog.get_logger()
 
@@ -58,6 +59,8 @@ class CreateSessionRequest(BaseModel):
     selected_text: str = ""
     after_text: str = ""
     style_rules: str = ""
+    # Precompiled Stage-3 contract. Hydrated on finalize only — never recompiled live.
+    style_contract: Dict[str, Any] | None = None
 
 
 class CreateSessionResponse(BaseModel):
@@ -73,6 +76,10 @@ class StyleDraftRequest(BaseModel):
 
 class StyleDraftResponse(BaseModel):
     rules: str
+
+
+class StyleCompileResponse(BaseModel):
+    contract: Dict[str, Any]
 
 
 class IntentFormatRequestBody(BaseModel):
@@ -132,7 +139,10 @@ async def create_dictation_session(
             "selected_text": (body.selected_text or "")[:200],
             "after_text": (body.after_text or "")[:500],
             "field_kind": body.field_kind or "composer",
-            "style_rules": (body.style_rules or "")[:500],
+            "style_rules": (body.style_rules or "")[:800],
+            "style_contract": body.style_contract
+            if isinstance(body.style_contract, dict)
+            else None,
         },
         "pcm": bytearray(),
         "format_on": True,
@@ -167,6 +177,22 @@ async def draft_composer_style(
     except GroqDictationError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
     return StyleDraftResponse(rules=rules)
+
+
+@router.post("/styles/compile", response_model=StyleCompileResponse)
+async def compile_composer_style(
+    body: StyleCompilationInput,
+    current_user: dict = Depends(get_current_session),
+):
+    """Stage-3 Save path: compile Tier1+2+3 into a cached Style Contract."""
+    _ = current_user
+    if not groq_configured():
+        raise HTTPException(status_code=503, detail="Speech service is not configured yet.")
+    try:
+        contract = await compile_style_contract(body)
+    except GroqDictationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+    return StyleCompileResponse(contract=contract)
 
 
 @router.post("/format", response_model=IntentFormatResponseBody)
@@ -457,6 +483,7 @@ async def dictation_websocket(websocket: WebSocket, session_id: str):
                     asr_text,
                     before_text=ctx.get("before_text", ""),
                     style_rules=ctx.get("style_rules", ""),
+                    style_contract=ctx.get("style_contract"),
                 )
             )
             cancel_waiter = asyncio.create_task(cancel_event.wait())

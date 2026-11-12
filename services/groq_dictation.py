@@ -211,11 +211,18 @@ async def format_transcript(
     *,
     before_text: str = "",
     style_rules: str = "",
+    style_contract: dict | None = None,
 ) -> str | None:
     """Rewrite the transcript. None means the call failed and the caller should keep raw text. "" means no speech."""
     if not GROQ_API_KEY or not asr_text.strip():
         return None
-    system = _FORMAT_SYSTEM + _style_block(style_rules)
+    if isinstance(style_contract, dict) and style_contract.get("system_directives"):
+        # Compiled playbook styles: hydrate prebuilt contract (no second LLM).
+        from services.style_compiler import build_live_dictation_system_prompt
+
+        system = build_live_dictation_system_prompt(style_contract)
+    else:
+        system = _FORMAT_SYSTEM + _style_block(style_rules)
     if GROQ_USER_DICTIONARY:
         terms = ", ".join(
             part.strip() for part in GROQ_USER_DICTIONARY.split(",") if part.strip()

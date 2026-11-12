@@ -141,6 +141,92 @@ def _seed_banned(category: Dict[str, Any], playbook: Dict[str, Any]) -> List[str
     return out
 
 
+def _map_layout(raw: Any) -> str:
+    value = str(raw or "").strip().lower()
+    if value in ("single_paragraph", "short_paragraphs", "bullet_list"):
+        return value
+    if value in ("paragraphs", "short_paragraph", "paragraph"):
+        return "short_paragraphs"
+    if value in ("bullets", "bullet", "list"):
+        return "bullet_list"
+    if value in ("action_first", "single", "one_paragraph"):
+        return "single_paragraph"
+    return "short_paragraphs"
+
+
+def _map_max_sentences(tuner_length: Optional[str], subcategory: Dict[str, Any]) -> int:
+    length = str(tuner_length or "").strip().lower()
+    if length in ("ultra_brief", "ultra-brief"):
+        return 2
+    if length in ("tighten_30", "tighten", "brief"):
+        return 4
+    try:
+        from_sub = int(subcategory.get("max_sentences", 0) or 0)
+        if from_sub > 0:
+            return from_sub
+    except (TypeError, ValueError):
+        pass
+    return 0
+
+
+def _deterministic_compile(input_data: StyleCompilationInput) -> Dict[str, Any]:
+    """Build a valid contract from Tier1–3 without calling Groq (Save must always work)."""
+    playbook = input_data.playbook_data or {}
+    subcategory = input_data.subcategory_data or {}
+    category = input_data.category_data or {}
+    tuners = (
+        input_data.tuner_overrides.model_dump(exclude_none=True)
+        if input_data.tuner_overrides
+        else {}
+    )
+    directive = str(playbook.get("directive") or "").strip()
+    objective = directive or f"Produce messages in the {input_data.style_name} style."
+
+    directives: List[str] = []
+    if directive:
+        directives.append(directive)
+    voice = str(category.get("voice") or subcategory.get("voice") or "").strip()
+    if voice:
+        directives.append(f"Keep a {voice.replace('_', ' ')} voice.")
+    length = str(tuners.get("length") or "").strip()
+    if length:
+        directives.append(f"Apply length preference: {length.replace('_', ' ')}.")
+    energy = str(tuners.get("energy") or "").strip()
+    if energy:
+        directives.append(f"Keep energy {energy}.")
+    while len(directives) < 3:
+        directives.append("Strip fillers and keep the speaker's facts intact.")
+    directives = directives[:5]
+
+    few = playbook.get("few_shot") or {}
+    sample = (input_data.user_sample_text or "").strip()
+    ideal = sample or str(few.get("target") or directive or input_data.style_name).strip()
+    spoken = str(few.get("raw_asr") or "").strip() or f"um so basically {ideal}"
+
+    layout = _map_layout(tuners.get("layout") or subcategory.get("default_layout"))
+    max_sentences = _map_max_sentences(tuners.get("length"), subcategory)
+    casing = "lowercase_all" if str(category.get("grammar_strictness") or "").lower() == "low" and "personal" in str(category.get("domain") or "").lower() else "standard"
+    if str(subcategory.get("casing") or "").lower() in ("standard", "lowercase_all"):
+        casing = str(subcategory.get("casing")).lower()
+
+    raw = {
+        "objective": objective,
+        "system_directives": directives,
+        "banned_phrases": _seed_banned(category, playbook),
+        "formatting_rules": {
+            "casing": casing,
+            "punctuation": "relaxed_no_trailing_period" if casing == "lowercase_all" else "strict",
+            "layout": layout,
+            "max_sentences": max_sentences,
+        },
+        "few_shot_anchor": {
+            "spoken_input": spoken,
+            "ideal_output": ideal,
+        },
+    }
+    return _post_validate(raw, input_data)
+
+
 def _post_validate(raw: Dict[str, Any], input_data: StyleCompilationInput) -> Dict[str, Any]:
     objective = str(raw.get("objective") or "").strip()
     if not objective:
@@ -221,8 +307,17 @@ def _post_validate(raw: Dict[str, Any], input_data: StyleCompilationInput) -> Di
 
 
 async def compile_style_contract(input_data: StyleCompilationInput) -> Dict[str, Any]:
+    """Prefer Groq structured compile; always fall back to deterministic merge so Save works."""
     if not GROQ_API_KEY:
-        raise GroqDictationError(503, "Speech service is not configured yet.")
+        logger.warning("style_compiler_groq_missing_using_fallback")
+        contract = _deterministic_compile(input_data)
+        logger.info(
+            "style_contract_compiled",
+            style_id=contract["style_id"],
+            taxonomy_path=contract["taxonomy_path"],
+            source="deterministic",
+        )
+        return contract
 
     payload = {
         "styleName": input_data.style_name,
@@ -257,16 +352,22 @@ async def compile_style_contract(input_data: StyleCompilationInput) -> Dict[str,
         "Content-Type": "application/json",
     }
     try:
-        async with httpx.AsyncClient(timeout=20.0) as client:
+        async with httpx.AsyncClient(timeout=45.0) as client:
             response = await client.post(
                 f"{GROQ_BASE_URL}/chat/completions",
                 headers=headers,
                 json=body,
             )
-    except httpx.TimeoutException as exc:
-        raise GroqDictationError(504, "Style compiler timed out.") from exc
-    except httpx.HTTPError as exc:
-        raise GroqDictationError(502, "Could not reach style compiler.") from exc
+    except Exception as exc:
+        logger.warning("style_compiler_transport_failed", error=str(exc))
+        contract = _deterministic_compile(input_data)
+        logger.info(
+            "style_contract_compiled",
+            style_id=contract["style_id"],
+            taxonomy_path=contract["taxonomy_path"],
+            source="deterministic_transport",
+        )
+        return contract
 
     if response.status_code >= 400:
         detail = (response.text or "")[:240]
@@ -275,10 +376,14 @@ async def compile_style_contract(input_data: StyleCompilationInput) -> Dict[str,
             status=response.status_code,
             detail=detail,
         )
-        raise GroqDictationError(
-            response.status_code,
-            f"Style compiler error ({response.status_code}).",
+        contract = _deterministic_compile(input_data)
+        logger.info(
+            "style_contract_compiled",
+            style_id=contract["style_id"],
+            taxonomy_path=contract["taxonomy_path"],
+            source="deterministic_http",
         )
+        return contract
 
     content = (
         response.json()
@@ -288,21 +393,45 @@ async def compile_style_contract(input_data: StyleCompilationInput) -> Dict[str,
         .strip()
     )
     if not content:
-        raise GroqDictationError(502, "Style compiler returned empty output.")
+        logger.warning("style_compiler_empty_using_fallback")
+        contract = _deterministic_compile(input_data)
+        logger.info(
+            "style_contract_compiled",
+            style_id=contract["style_id"],
+            taxonomy_path=contract["taxonomy_path"],
+            source="deterministic_empty",
+        )
+        return contract
 
     try:
         raw = json.loads(content)
-    except json.JSONDecodeError as exc:
-        raise GroqDictationError(502, "Style compiler returned invalid JSON.") from exc
+    except json.JSONDecodeError:
+        logger.warning("style_compiler_invalid_json_using_fallback")
+        contract = _deterministic_compile(input_data)
+        logger.info(
+            "style_contract_compiled",
+            style_id=contract["style_id"],
+            taxonomy_path=contract["taxonomy_path"],
+            source="deterministic_json",
+        )
+        return contract
 
     if not isinstance(raw, dict):
-        raise GroqDictationError(502, "Style compiler returned invalid JSON object.")
+        contract = _deterministic_compile(input_data)
+        logger.info(
+            "style_contract_compiled",
+            style_id=contract["style_id"],
+            taxonomy_path=contract["taxonomy_path"],
+            source="deterministic_shape",
+        )
+        return contract
 
     contract = _post_validate(raw, input_data)
     logger.info(
         "style_contract_compiled",
         style_id=contract["style_id"],
         taxonomy_path=contract["taxonomy_path"],
+        source="groq",
     )
     return contract
 

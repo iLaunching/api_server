@@ -187,14 +187,17 @@ async def compile_composer_style(
     body: StyleCompilationInput,
     current_user: dict = Depends(get_current_session),
 ):
-    """Stage-3 Save path: compile Tier1+2+3 into a cached Style Contract."""
+    """Stage-3 Save path: compile Tier1+2+3 into a cached Style Contract.
+
+    Always returns a contract — Groq when available, deterministic merge otherwise.
+    """
     _ = current_user
-    if not groq_configured():
-        raise HTTPException(status_code=503, detail="Speech service is not configured yet.")
     try:
         contract = await compile_style_contract(body)
     except GroqDictationError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Style compile failed.") from exc
     return StyleCompileResponse(contract=contract)
 
 

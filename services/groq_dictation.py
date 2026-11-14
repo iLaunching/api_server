@@ -56,6 +56,29 @@ CRITICAL RULES:
 Input Transcript:"""
 
 _RETRY_AFTER_RE = re.compile(r"try again in\s+(\d+(?:\.\d+)?)\s*s", re.IGNORECASE)
+_NON_SPEECH_RE = re.compile(r"[^a-z0-9\s]+")
+
+# True Whisper bumper junk only — never drop real speech like "thank you".
+# Silent Start→Stop is handled on-device via SpeechEnergyGate.
+_WHISPER_BUMPER_JUNK = frozenset(
+    {
+        "subtitles by the amara.org community",
+        "subtitles by amara.org",
+        "amara.org",
+    }
+)
+
+
+def sanitize_whisper_transcript(text: str) -> str:
+    """Drop subtitle-bumper junk; keep legitimate short utterances."""
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return ""
+    normalized = _NON_SPEECH_RE.sub("", cleaned.lower())
+    normalized = " ".join(normalized.split())
+    if not normalized or normalized in _WHISPER_BUMPER_JUNK:
+        return ""
+    return cleaned
 
 
 class GroqDictationError(RuntimeError):
@@ -118,7 +141,7 @@ async def transcribe_pcm16(
                 raise GroqDictationError(502, "Could not reach speech provider.") from exc
             if response.status_code < 400:
                 payload = response.json()
-                return (payload.get("text") or "").strip()
+                return sanitize_whisper_transcript((payload.get("text") or "").strip())
             detail = (response.text or "")[:240]
             logger.warning(
                 "groq_asr_failed",

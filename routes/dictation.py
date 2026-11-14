@@ -33,6 +33,7 @@ from services.groq_dictation import (
     draft_style_rules,
     format_transcript,
     groq_configured,
+    sanitize_whisper_transcript,
     transcribe_pcm16,
 )
 from services.style_compiler import StyleCompilationInput, compile_style_contract
@@ -592,7 +593,9 @@ async def dictation_websocket(websocket: WebSocket, session_id: str):
             discard_session = True
             return
         try:
-            asr_text = await transcribe_pcm16(bytes(pcm), retry_rate_limits=True)
+            asr_text = sanitize_whisper_transcript(
+                await transcribe_pcm16(bytes(pcm), retry_rate_limits=True)
+            )
         except GroqDictationError as exc:
             if cancel_event.is_set():
                 return
@@ -606,6 +609,17 @@ async def dictation_websocket(websocket: WebSocket, session_id: str):
             discard_session = True
             return
         if cancel_event.is_set():
+            return
+        # Silence / Whisper bumper hallucination — do not paste "Thank you" etc.
+        if not asr_text:
+            await websocket.send_json(
+                {
+                    "type": "error",
+                    "code": "empty_audio",
+                    "message": "No speech detected.",
+                }
+            )
+            discard_session = True
             return
         formatted = False
         final_text = asr_text

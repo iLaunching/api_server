@@ -121,6 +121,8 @@ class StyleCompilationInput(BaseModel):
     playbook_data: Dict[str, Any] = Field(default_factory=dict)
     tuner_overrides: Optional[TunerOverrides] = None
     user_sample_text: Optional[str] = Field(default=None, max_length=4000)
+    # Optional override for Catalog Studio / staff tooling. Falls back to GROQ_FORMAT_MODEL.
+    model: Optional[str] = Field(default=None, max_length=120)
 
 
 def _seed_banned(category: Dict[str, Any], playbook: Dict[str, Any]) -> List[str]:
@@ -333,8 +335,11 @@ async def compile_style_contract(input_data: StyleCompilationInput) -> Dict[str,
         "userSampleText": (input_data.user_sample_text or "").strip() or None,
     }
 
+    model_override = (input_data.model or "").strip()
+    selected_model = model_override or GROQ_FORMAT_MODEL
+
     body = {
-        "model": GROQ_FORMAT_MODEL,
+        "model": selected_model,
         "temperature": 0.1,
         "max_tokens": 1200,
         "reasoning_effort": "low",

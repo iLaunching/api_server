@@ -288,7 +288,30 @@ def _post_validate(raw: Dict[str, Any], input_data: StyleCompilationInput) -> Di
             or f"um so basically {ideal}"
         ).strip()
 
-    return {
+    playbook = input_data.playbook_data or {}
+    structure = str(
+        raw.get("structure") or playbook.get("structure") or ""
+    ).strip()
+    do_examples = [
+        str(item).strip()
+        for item in (raw.get("do_examples") or playbook.get("do_examples") or [])
+        if str(item).strip()
+    ][:4]
+    dont_examples = [
+        str(item).strip()
+        for item in (raw.get("dont_examples") or playbook.get("dont_examples") or [])
+        if str(item).strip()
+    ][:4]
+    glossary = []
+    for row in raw.get("glossary") or playbook.get("glossary") or []:
+        if not isinstance(row, dict):
+            continue
+        heard = str(row.get("heard") or "").strip()
+        written = str(row.get("written") or "").strip()
+        if heard and written:
+            glossary.append({"heard": heard, "written": written})
+
+    contract = {
         "style_id": f"style_{uuid.uuid4().hex[:12]}",
         "name": input_data.style_name.strip(),
         "taxonomy_path": input_data.taxonomy_path.strip(),
@@ -306,6 +329,15 @@ def _post_validate(raw: Dict[str, Any], input_data: StyleCompilationInput) -> Di
             "ideal_output": ideal,
         },
     }
+    if structure:
+        contract["structure"] = structure
+    if do_examples:
+        contract["do_examples"] = do_examples
+    if dont_examples:
+        contract["dont_examples"] = dont_examples
+    if glossary:
+        contract["glossary"] = glossary[:40]
+    return contract
 
 
 async def compile_style_contract(input_data: StyleCompilationInput) -> Dict[str, Any]:
@@ -448,6 +480,46 @@ def build_live_dictation_system_prompt(contract: Dict[str, Any]) -> str:
     formatting = contract.get("formatting_rules") or {}
     few = contract.get("few_shot_anchor") or {}
     banned = contract.get("banned_phrases") or []
+    structure = str(contract.get("structure") or "").strip()
+    do_examples = [
+        str(item).strip()
+        for item in (contract.get("do_examples") or [])
+        if str(item).strip()
+    ]
+    dont_examples = [
+        str(item).strip()
+        for item in (contract.get("dont_examples") or [])
+        if str(item).strip()
+    ]
+    glossary_lines = []
+    for row in contract.get("glossary") or []:
+        if not isinstance(row, dict):
+            continue
+        heard = str(row.get("heard") or "").strip()
+        written = str(row.get("written") or "").strip()
+        if heard and written:
+            glossary_lines.append(f'  * "{heard}" → "{written}"')
+
+    extras = []
+    if structure:
+        extras.append(f"- Structure: {structure}")
+    if do_examples:
+        extras.append(
+            "- Do (good outputs):\n"
+            + "\n".join(f"  * {item}" for item in do_examples[:4])
+        )
+    if dont_examples:
+        extras.append(
+            "- Don't (avoid outputs like):\n"
+            + "\n".join(f"  * {item}" for item in dont_examples[:4])
+        )
+    if glossary_lines:
+        extras.append(
+            "- Wordbook / spelling (prefer these exact forms):\n"
+            + "\n".join(glossary_lines[:24])
+        )
+    extras_block = ("\n" + "\n".join(extras)) if extras else ""
+
     return f"""
 You are a real-time dictation processor. Transform raw Speech-to-Text (ASR) into a ready-to-send message.
 
@@ -462,7 +534,7 @@ STYLE CONTRACT:
 - Rules:
 {rules_block}
 - Banned Phrases (never output): {json.dumps(banned, ensure_ascii=False)}
-- Formatting: Casing={formatting.get("casing")}, Punctuation={formatting.get("punctuation")}, Layout={formatting.get("layout")}, MaxSentences={formatting.get("max_sentences")}
+- Formatting: Casing={formatting.get("casing")}, Punctuation={formatting.get("punctuation")}, Layout={formatting.get("layout")}, MaxSentences={formatting.get("max_sentences")}{extras_block}
 
 GOLDEN EXAMPLE:
 Raw ASR: "{few.get("spoken_input") or ""}"

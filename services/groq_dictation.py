@@ -245,7 +245,13 @@ async def format_transcript(
 
         system = build_live_dictation_system_prompt(style_contract)
     else:
+        from services.style_compiler import room_dictation_assets_block
+
         system = _FORMAT_SYSTEM + _style_block(style_rules)
+        # Room Wordbook/Shortcuts arrive on the same request — string append only (<1ms).
+        room_assets = room_dictation_assets_block(style_contract)
+        if room_assets:
+            system += "\n\nROOM DICTATION ASSETS:\n" + room_assets
     if GROQ_USER_DICTIONARY:
         terms = ", ".join(
             part.strip() for part in GROQ_USER_DICTIONARY.split(",") if part.strip()

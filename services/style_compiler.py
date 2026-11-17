@@ -302,14 +302,7 @@ def _post_validate(raw: Dict[str, Any], input_data: StyleCompilationInput) -> Di
         for item in (raw.get("dont_examples") or playbook.get("dont_examples") or [])
         if str(item).strip()
     ][:4]
-    glossary = []
-    for row in raw.get("glossary") or playbook.get("glossary") or []:
-        if not isinstance(row, dict):
-            continue
-        heard = str(row.get("heard") or "").strip()
-        written = str(row.get("written") or "").strip()
-        if heard and written:
-            glossary.append({"heard": heard, "written": written})
+    # Glossary/wordbook are room-scoped user data — never bake into global template contracts.
 
     contract = {
         "style_id": f"style_{uuid.uuid4().hex[:12]}",
@@ -335,8 +328,6 @@ def _post_validate(raw: Dict[str, Any], input_data: StyleCompilationInput) -> Di
         contract["do_examples"] = do_examples
     if dont_examples:
         contract["dont_examples"] = dont_examples
-    if glossary:
-        contract["glossary"] = glossary[:40]
     return contract
 
 
@@ -491,15 +482,6 @@ def build_live_dictation_system_prompt(contract: Dict[str, Any]) -> str:
         for item in (contract.get("dont_examples") or [])
         if str(item).strip()
     ]
-    glossary_lines = []
-    for row in contract.get("glossary") or []:
-        if not isinstance(row, dict):
-            continue
-        heard = str(row.get("heard") or "").strip()
-        written = str(row.get("written") or "").strip()
-        if heard and written:
-            glossary_lines.append(f'  * "{heard}" → "{written}"')
-
     extras = []
     if structure:
         extras.append(f"- Structure: {structure}")
@@ -513,11 +495,9 @@ def build_live_dictation_system_prompt(contract: Dict[str, Any]) -> str:
             "- Don't (avoid outputs like):\n"
             + "\n".join(f"  * {item}" for item in dont_examples[:4])
         )
-    if glossary_lines:
-        extras.append(
-            "- Wordbook / spelling (prefer these exact forms):\n"
-            + "\n".join(glossary_lines[:24])
-        )
+    room_assets = room_dictation_assets_block(contract)
+    if room_assets:
+        extras.append(room_assets)
     extras_block = ("\n" + "\n".join(extras)) if extras else ""
 
     return f"""
@@ -540,3 +520,38 @@ GOLDEN EXAMPLE:
 Raw ASR: "{few.get("spoken_input") or ""}"
 Target Output: "{few.get("ideal_output") or ""}"
 """.strip()
+
+
+def room_dictation_assets_block(contract: Dict[str, Any] | None) -> str:
+    """Pure string hydration for room Wordbook/glossary + Shortcuts (<1ms)."""
+    if not isinstance(contract, dict):
+        return ""
+    glossary_lines = []
+    for row in contract.get("glossary") or []:
+        if not isinstance(row, dict):
+            continue
+        heard = str(row.get("heard") or "").strip()
+        written = str(row.get("written") or "").strip()
+        if heard and written:
+            glossary_lines.append(f'  * "{heard}" → "{written}"')
+    shortcut_lines = []
+    for row in contract.get("shortcuts") or []:
+        if not isinstance(row, dict):
+            continue
+        trigger = str(row.get("trigger") or "").strip()
+        expansion = str(row.get("expansion") or "").strip()
+        if trigger and expansion:
+            shortcut_lines.append(f'  * If the speaker says "{trigger}", output: {expansion}')
+
+    parts = []
+    if glossary_lines:
+        parts.append(
+            "- Room Wordbook / glossary (prefer these exact spellings):\n"
+            + "\n".join(glossary_lines[:24])
+        )
+    if shortcut_lines:
+        parts.append(
+            "- Room Shortcuts (expand spoken triggers to the canned text):\n"
+            + "\n".join(shortcut_lines[:16])
+        )
+    return "\n".join(parts)

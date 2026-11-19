@@ -25,6 +25,15 @@ from services.groq_dictation import (
 
 logger = structlog.get_logger()
 
+# Always injected into compiled contracts (and required by COMPILER_SYSTEM_PROMPT).
+ASR_FILLER_DIRECTIVE = (
+    "Strip all filler words, hesitations, and false starts from the ASR transcript."
+)
+ASR_SELF_CORRECTION_DIRECTIVE = (
+    "When the speaker corrects themselves mid-thought, keep only the final corrected fact or phrasing."
+)
+ASR_CLEANUP_DIRECTIVES = (ASR_FILLER_DIRECTIVE, ASR_SELF_CORRECTION_DIRECTIVE)
+
 COMPILER_SYSTEM_PROMPT = """
 You are an expert AI Communication Architect. Your job is to compile a 3-tier style configuration and optional writing sample into a deterministic, machine-readable JSON contract for a real-time speech-to-text formatter.
 
@@ -35,8 +44,9 @@ COMPILATION RULES:
    - If 'userSampleText' is provided, set 'few_shot_anchor.ideal_output' to a cleaned version of that sample, and reverse-engineer a realistic messy spoken voice note ('spoken_input' with natural hesitations like "um" or a quick backtrack) that captures the exact same facts.
    - If no 'userSampleText' is provided, refine the Tier 3 playbook's default example so it reflects any tuner overrides. If the playbook already includes a few_shot, preserve its facts and polish the pair.
 4. IMPERATIVE DIRECTIVES: Write 'system_directives' as 3 to 5 strict, actionable transformation commands. Never include vague fluff.
-5. BANNED PHRASES: Merge Tier 1 hedges/forbidden phrases with Tier 3 banned_phrases into a single list. Do not invent unrelated bans.
-6. max_sentences: Use the Tier 2 max_sentences when present. Use 0 when there is no hard sentence cap.
+5. ASR CLEANUP (REQUIRED): Always include directives that (a) strip ASR filler words, hesitations, and false starts, and (b) resolve spoken self-corrections in favor of the speaker's final correction (e.g. "20—actually 25", "Tuesday — no wait, Thursday").
+6. BANNED PHRASES: Merge Tier 1 hedges/forbidden phrases with Tier 3 banned_phrases into a single list. Do not invent unrelated bans.
+7. max_sentences: Use the Tier 2 max_sentences when present. Use 0 when there is no hard sentence cap.
 """.strip()
 
 COMPILED_STYLE_SCHEMA: Dict[str, Any] = {
@@ -60,7 +70,11 @@ COMPILED_STYLE_SCHEMA: Dict[str, Any] = {
             "system_directives": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "3 to 5 concrete, imperative rules for transforming spoken ASR into the target style.",
+                "description": (
+                    "3 to 5 concrete, imperative rules for transforming spoken ASR into the target style. "
+                    "Must include stripping fillers/hesitations/false starts and resolving spoken "
+                    "self-corrections in favor of the speaker's final correction."
+                ),
             },
             "banned_phrases": {
                 "type": "array",
@@ -171,6 +185,82 @@ def _map_max_sentences(tuner_length: Optional[str], subcategory: Dict[str, Any])
     return 0
 
 
+def _is_generic_filler_pad(text: str) -> bool:
+    """True for the old pad string we used to fill short directive lists."""
+    low = text.strip().lower()
+    return low.startswith("strip fillers") and "facts intact" in low
+
+
+def _directive_covers_filler(text: str) -> bool:
+    low = text.lower()
+    return any(
+        token in low
+        for token in ("filler", "hesitation", "false start", "um", "uh")
+    )
+
+
+def _directive_covers_self_correction(text: str) -> bool:
+    low = text.lower()
+    return any(
+        token in low
+        for token in (
+            "self-correction",
+            "self correction",
+            "corrects themselves",
+            "mid-thought",
+            "final corrected",
+            "no wait",
+        )
+    )
+
+
+def _ensure_asr_cleanup_directives(directives: List[str], *, min_count: int = 3) -> List[str]:
+    """
+    Guarantee filler + self-correction imperatives in system_directives.
+    Caps at 5; prefers playbook/voice lines over the legacy generic pad.
+    """
+    cleaned = [str(item).strip() for item in directives if str(item).strip()]
+    # Drop legacy pad so we can replace with the stronger required pair.
+    cleaned = [item for item in cleaned if not _is_generic_filler_pad(item)]
+
+    has_filler = any(_directive_covers_filler(item) for item in cleaned)
+    has_self = any(_directive_covers_self_correction(item) for item in cleaned)
+
+    required: List[str] = []
+    if not has_filler:
+        required.append(ASR_FILLER_DIRECTIVE)
+    if not has_self:
+        required.append(ASR_SELF_CORRECTION_DIRECTIVE)
+
+    if required:
+        room = max(0, 5 - len(cleaned))
+        if len(required) > room:
+            # Evict from the end (tuner pads) to make room for required ASR rules.
+            drop = len(required) - room
+            cleaned = cleaned[:-drop] if drop < len(cleaned) else []
+        cleaned.extend(required)
+
+    # De-dupe case-insensitively while preserving order.
+    seen: set[str] = set()
+    out: List[str] = []
+    for item in cleaned:
+        key = item.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(item)
+
+    facts_pad = "Preserve the speaker's facts, names, dates, and numbers."
+    while len(out) < min_count:
+        if facts_pad.lower() not in seen:
+            out.append(facts_pad)
+            seen.add(facts_pad.lower())
+        else:
+            break
+
+    return out[:5]
+
+
 def _deterministic_compile(input_data: StyleCompilationInput) -> Dict[str, Any]:
     """Build a valid contract from Tier1–3 without calling Groq (Save must always work)."""
     playbook = input_data.playbook_data or {}
@@ -196,9 +286,7 @@ def _deterministic_compile(input_data: StyleCompilationInput) -> Dict[str, Any]:
     energy = str(tuners.get("energy") or "").strip()
     if energy:
         directives.append(f"Keep energy {energy}.")
-    while len(directives) < 3:
-        directives.append("Strip fillers and keep the speaker's facts intact.")
-    directives = directives[:5]
+    directives = _ensure_asr_cleanup_directives(directives)
 
     few = playbook.get("few_shot") or {}
     sample = (input_data.user_sample_text or "").strip()
@@ -241,11 +329,9 @@ def _post_validate(raw: Dict[str, Any], input_data: StyleCompilationInput) -> Di
     ]
     if len(directives) < 3:
         directive = str(input_data.playbook_data.get("directive") or "").strip()
-        if directive:
+        if directive and directive.lower() not in {d.lower() for d in directives}:
             directives.append(directive)
-        while len(directives) < 3:
-            directives.append("Strip fillers and keep the speaker's facts intact.")
-    directives = directives[:5]
+    directives = _ensure_asr_cleanup_directives(directives)
 
     banned = [
         str(item).strip()

@@ -43,9 +43,9 @@ COMPILATION RULES:
 3. SYNTHESIZE FEW-SHOT PAIR:
    - If 'userSampleText' is provided, set 'few_shot_anchor.ideal_output' to a cleaned version of that sample, and reverse-engineer a realistic messy spoken voice note ('spoken_input' with natural hesitations like "um" or a quick backtrack) that captures the exact same facts.
    - If no 'userSampleText' is provided, refine the Tier 3 playbook's default example so it reflects any tuner overrides. If the playbook already includes a few_shot, preserve its facts and polish the pair.
-4. IMPERATIVE DIRECTIVES: Write 'system_directives' as 3 to 5 strict, actionable transformation commands. Never include vague fluff.
-5. ASR CLEANUP (REQUIRED): Always include directives that (a) strip ASR filler words, hesitations, and false starts, and (b) resolve spoken self-corrections in favor of the speaker's final correction (e.g. "20—actually 25", "Tuesday — no wait, Thursday").
-6. BANNED PHRASES: Merge Tier 1 hedges/forbidden phrases with Tier 3 banned_phrases into a single list. Do not invent unrelated bans.
+4. IMPERATIVE DIRECTIVES: Write 'system_directives' as 3 to 5 strict, actionable transformation commands. Never include vague fluff. Use only ASCII hyphen "-" (never Unicode dashes). Spend slots on real behavioral rules (structure, tone, ask shape, what not to pitch)—not meta instructions.
+5. ASR CLEANUP (REQUIRED): Always include directives that (a) strip ASR filler words, hesitations, and false starts, and (b) resolve spoken self-corrections in favor of the speaker's final correction (e.g. "20—actually 25", "Tuesday — no wait, Thursday"). Use ASCII hyphens in those directives.
+6. BANNED PHRASES: Merge Tier 1 hedges/forbidden phrases with Tier 3 banned_phrases into a single list. Do not invent unrelated bans. Do NOT generate a system_directive telling the model to check or remove banned_phrases—that list is enforced separately at runtime (e.g. never write "Remove any phrases that appear in the banned_phrases list.").
 7. max_sentences: Use the Tier 2 max_sentences when present. Use 0 when there is no hard sentence cap.
 """.strip()
 
@@ -73,7 +73,9 @@ COMPILED_STYLE_SCHEMA: Dict[str, Any] = {
                 "description": (
                     "3 to 5 concrete, imperative rules for transforming spoken ASR into the target style. "
                     "Must include stripping fillers/hesitations/false starts and resolving spoken "
-                    "self-corrections in favor of the speaker's final correction."
+                    "self-corrections in favor of the speaker's final correction. "
+                    "Do not include a meta rule about checking banned_phrases—that is enforced separately. "
+                    "Use ASCII hyphens only."
                 ),
             },
             "banned_phrases": {
@@ -198,8 +200,11 @@ _SELF_CORRECTION_TOKENS = (
     "self-correction",
     "self correction",
     "self-correct",
+    "selfcorrections",
+    "selfcorrection",
     "corrects themselves",
     "correct themselves",
+    "corrected phrase",
     "mid-thought",
     "mid thought",
     "final corrected",
@@ -209,15 +214,37 @@ _SELF_CORRECTION_TOKENS = (
     "scratch that",
     "backtrack",
 )
+# Unicode dashes → ASCII hyphen so LLM "self‑correction" (U+2011) matches tokens.
+_DASH_TO_ASCII = str.maketrans({
+    "\u2010": "-",  # hyphen
+    "\u2011": "-",  # non-breaking hyphen
+    "\u2012": "-",  # figure dash
+    "\u2013": "-",  # en dash
+    "\u2014": "-",  # em dash
+    "\u2015": "-",  # horizontal bar
+    "\u2212": "-",  # minus sign
+})
 _FACTS_PAD = "Preserve the speaker's facts, names, dates, and numbers."
-_ASR_FILLER_LOW = ASR_FILLER_DIRECTIVE.lower()
-_ASR_SELF_LOW = ASR_SELF_CORRECTION_DIRECTIVE.lower()
 _FACTS_PAD_LOW = _FACTS_PAD.lower()
+
+
+def _normalize_directive_key(text: str) -> str:
+    """Lowercase + ASCII-normalize dashes for semantic matching (no regex)."""
+    return text.strip().lower().translate(_DASH_TO_ASCII)
 
 
 def _is_generic_filler_pad(low: str) -> bool:
     """True for the old pad string we used to fill short directive lists."""
     return low.startswith("strip fillers") and "facts intact" in low
+
+
+def _is_banned_phrases_meta(low: str) -> bool:
+    """Drop redundant 'check banned_phrases' directives — enforced via Never output."""
+    if "banned_phrases" in low or "banned phrases" in low:
+        return True
+    return "banned phrase" in low and any(
+        hint in low for hint in ("list", "remove", "check", "appear", "never output")
+    )
 
 
 def _directive_covers_filler(low: str) -> bool:
@@ -227,15 +254,11 @@ def _directive_covers_filler(low: str) -> bool:
 
 def _directive_covers_self_correction(low: str) -> bool:
     """Semantic match — catches LLM paraphrases of the self-correction rule."""
-    return any(token in low for token in _SELF_CORRECTION_TOKENS)
-
-
-def _pick_canonical_or_first(candidates: List[str], canonical: str, canonical_low: str) -> str:
-    """Prefer exact canonical wording; otherwise keep the first semantic match."""
-    for item in candidates:
-        if item.lower() == canonical_low:
-            return canonical
-    return candidates[0] if candidates else canonical
+    if any(token in low for token in _SELF_CORRECTION_TOKENS):
+        return True
+    # Hyphen-stripped form catches odd spacing after dash normalize.
+    compact = low.replace("-", "").replace(" ", "")
+    return "selfcorrection" in compact
 
 
 def _ensure_asr_cleanup_directives(directives: List[str], *, min_count: int = 3) -> List[str]:
@@ -245,53 +268,33 @@ def _ensure_asr_cleanup_directives(directives: List[str], *, min_count: int = 3)
     Sync, allocation-light, O(n) over ≤5 short strings. Called only from Save
     compile / _post_validate — never on the live finalize WebSocket path.
 
-    Ordering: up to 3 playbook-specific directives first, then the 2 universal ASR
-    rules. Near-duplicate filler or self-correction lines collapse to one slot each.
+    Ordering: up to 3 playbook-specific directives first, then the 2 canonical ASR
+    rules. Unicode-dash paraphrases and banned_phrases meta-lines are dropped so
+    they cannot burn playbook slots.
     """
     playbook: List[str] = []
-    filler_hits: List[str] = []
-    self_hits: List[str] = []
     seen_exact: set[str] = set()
 
     for raw in directives:
         item = str(raw).strip()
         if not item:
             continue
-        key = item.lower()
-        if key in seen_exact or _is_generic_filler_pad(key):
+        key = _normalize_directive_key(item)
+        if key in seen_exact or _is_generic_filler_pad(key) or _is_banned_phrases_meta(key):
             continue
         seen_exact.add(key)
 
         is_filler = _directive_covers_filler(key)
         is_self = _directive_covers_self_correction(key)
-        if is_filler and is_self:
-            filler_hits.append(item)
-            self_hits.append(item)
-        elif is_filler:
-            filler_hits.append(item)
-        elif is_self:
-            self_hits.append(item)
-        else:
-            playbook.append(item)
+        if is_filler or is_self:
+            # Collapse into the canonical ASR pair appended below.
+            continue
+        playbook.append(item)
 
-    filler_line = (
-        _pick_canonical_or_first(filler_hits, ASR_FILLER_DIRECTIVE, _ASR_FILLER_LOW)
-        if filler_hits
-        else ASR_FILLER_DIRECTIVE
-    )
-    self_line = (
-        _pick_canonical_or_first(self_hits, ASR_SELF_CORRECTION_DIRECTIVE, _ASR_SELF_LOW)
-        if self_hits
-        else ASR_SELF_CORRECTION_DIRECTIVE
-    )
-    if filler_line == self_line:
-        filler_line = ASR_FILLER_DIRECTIVE
-        self_line = ASR_SELF_CORRECTION_DIRECTIVE
+    # Always emit canonical ASCII wording for the reserved ASR slots.
+    out = playbook[:3] + [ASR_FILLER_DIRECTIVE, ASR_SELF_CORRECTION_DIRECTIVE]
 
-    # Reserve 2 slots for ASR; keep leading playbook constraints (max 3).
-    out = playbook[:3] + [filler_line, self_line]
-
-    seen = {d.lower() for d in out}
+    seen = {_normalize_directive_key(d) for d in out}
     while len(out) < min_count:
         if _FACTS_PAD_LOW not in seen:
             out.append(_FACTS_PAD)

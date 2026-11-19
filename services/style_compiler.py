@@ -185,76 +185,117 @@ def _map_max_sentences(tuner_length: Optional[str], subcategory: Dict[str, Any])
     return 0
 
 
-def _is_generic_filler_pad(text: str) -> bool:
+# High-signal substring tokens only — no regex. Save/compile path; ≤5 short lines.
+_FILLER_TOKENS = (
+    "filler",
+    "fillers",
+    "hesitation",
+    "hesitations",
+    "false start",
+    "false starts",
+)
+_SELF_CORRECTION_TOKENS = (
+    "self-correction",
+    "self correction",
+    "self-correct",
+    "corrects themselves",
+    "correct themselves",
+    "mid-thought",
+    "mid thought",
+    "final corrected",
+    "final correction",
+    "final intended",
+    "no wait",
+    "scratch that",
+    "backtrack",
+)
+_FACTS_PAD = "Preserve the speaker's facts, names, dates, and numbers."
+_ASR_FILLER_LOW = ASR_FILLER_DIRECTIVE.lower()
+_ASR_SELF_LOW = ASR_SELF_CORRECTION_DIRECTIVE.lower()
+_FACTS_PAD_LOW = _FACTS_PAD.lower()
+
+
+def _is_generic_filler_pad(low: str) -> bool:
     """True for the old pad string we used to fill short directive lists."""
-    low = text.strip().lower()
     return low.startswith("strip fillers") and "facts intact" in low
 
 
-def _directive_covers_filler(text: str) -> bool:
-    low = text.lower()
-    return any(
-        token in low
-        for token in ("filler", "hesitation", "false start", "um", "uh")
-    )
+def _directive_covers_filler(low: str) -> bool:
+    """Semantic match — catches LLM paraphrases of the filler rule."""
+    return any(token in low for token in _FILLER_TOKENS)
 
 
-def _directive_covers_self_correction(text: str) -> bool:
-    low = text.lower()
-    return any(
-        token in low
-        for token in (
-            "self-correction",
-            "self correction",
-            "corrects themselves",
-            "mid-thought",
-            "final corrected",
-            "no wait",
-        )
-    )
+def _directive_covers_self_correction(low: str) -> bool:
+    """Semantic match — catches LLM paraphrases of the self-correction rule."""
+    return any(token in low for token in _SELF_CORRECTION_TOKENS)
+
+
+def _pick_canonical_or_first(candidates: List[str], canonical: str, canonical_low: str) -> str:
+    """Prefer exact canonical wording; otherwise keep the first semantic match."""
+    for item in candidates:
+        if item.lower() == canonical_low:
+            return canonical
+    return candidates[0] if candidates else canonical
 
 
 def _ensure_asr_cleanup_directives(directives: List[str], *, min_count: int = 3) -> List[str]:
     """
     Guarantee filler + self-correction imperatives in system_directives.
-    Caps at 5; prefers playbook/voice lines over the legacy generic pad.
+
+    Sync, allocation-light, O(n) over ≤5 short strings. Called only from Save
+    compile / _post_validate — never on the live finalize WebSocket path.
+
+    Ordering: up to 3 playbook-specific directives first, then the 2 universal ASR
+    rules. Near-duplicate filler or self-correction lines collapse to one slot each.
     """
-    cleaned = [str(item).strip() for item in directives if str(item).strip()]
-    # Drop legacy pad so we can replace with the stronger required pair.
-    cleaned = [item for item in cleaned if not _is_generic_filler_pad(item)]
+    playbook: List[str] = []
+    filler_hits: List[str] = []
+    self_hits: List[str] = []
+    seen_exact: set[str] = set()
 
-    has_filler = any(_directive_covers_filler(item) for item in cleaned)
-    has_self = any(_directive_covers_self_correction(item) for item in cleaned)
-
-    required: List[str] = []
-    if not has_filler:
-        required.append(ASR_FILLER_DIRECTIVE)
-    if not has_self:
-        required.append(ASR_SELF_CORRECTION_DIRECTIVE)
-
-    if required:
-        room = max(0, 5 - len(cleaned))
-        if len(required) > room:
-            # Evict from the end (tuner pads) to make room for required ASR rules.
-            drop = len(required) - room
-            cleaned = cleaned[:-drop] if drop < len(cleaned) else []
-        cleaned.extend(required)
-
-    # De-dupe case-insensitively while preserving order.
-    seen: set[str] = set()
-    out: List[str] = []
-    for item in cleaned:
-        key = item.lower()
-        if key in seen:
+    for raw in directives:
+        item = str(raw).strip()
+        if not item:
             continue
-        seen.add(key)
-        out.append(item)
+        key = item.lower()
+        if key in seen_exact or _is_generic_filler_pad(key):
+            continue
+        seen_exact.add(key)
 
-    facts_pad = "Preserve the speaker's facts, names, dates, and numbers."
+        is_filler = _directive_covers_filler(key)
+        is_self = _directive_covers_self_correction(key)
+        if is_filler and is_self:
+            filler_hits.append(item)
+            self_hits.append(item)
+        elif is_filler:
+            filler_hits.append(item)
+        elif is_self:
+            self_hits.append(item)
+        else:
+            playbook.append(item)
+
+    filler_line = (
+        _pick_canonical_or_first(filler_hits, ASR_FILLER_DIRECTIVE, _ASR_FILLER_LOW)
+        if filler_hits
+        else ASR_FILLER_DIRECTIVE
+    )
+    self_line = (
+        _pick_canonical_or_first(self_hits, ASR_SELF_CORRECTION_DIRECTIVE, _ASR_SELF_LOW)
+        if self_hits
+        else ASR_SELF_CORRECTION_DIRECTIVE
+    )
+    if filler_line == self_line:
+        filler_line = ASR_FILLER_DIRECTIVE
+        self_line = ASR_SELF_CORRECTION_DIRECTIVE
+
+    # Reserve 2 slots for ASR; keep leading playbook constraints (max 3).
+    out = playbook[:3] + [filler_line, self_line]
+
+    seen = {d.lower() for d in out}
     while len(out) < min_count:
-        if facts_pad.lower() not in seen:
-            out.append(facts_pad)
-            seen.add(facts_pad.lower())
+        if _FACTS_PAD_LOW not in seen:
+            out.append(_FACTS_PAD)
+            seen.add(_FACTS_PAD_LOW)
         else:
             break
 
@@ -286,7 +327,7 @@ def _deterministic_compile(input_data: StyleCompilationInput) -> Dict[str, Any]:
     energy = str(tuners.get("energy") or "").strip()
     if energy:
         directives.append(f"Keep energy {energy}.")
-    directives = _ensure_asr_cleanup_directives(directives)
+    # ASR hygiene is applied once in _post_validate (no double pass).
 
     few = playbook.get("few_shot") or {}
     sample = (input_data.user_sample_text or "").strip()

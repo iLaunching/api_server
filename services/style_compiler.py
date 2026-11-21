@@ -43,11 +43,11 @@ COMPILATION RULES:
 3. SYNTHESIZE FEW-SHOT PAIR:
    - If 'userSampleText' is provided, set 'few_shot_anchor.ideal_output' to a cleaned version of that sample, and reverse-engineer a realistic messy spoken voice note ('spoken_input' with natural hesitations like "um" or a quick backtrack) that captures the exact same facts.
    - If no 'userSampleText' is provided, refine the Tier 3 playbook's default example so it reflects any tuner overrides. If the playbook already includes a few_shot, preserve its facts and polish the pair.
-4. IMPERATIVE DIRECTIVES: Write 'system_directives' as 3 to 5 strict, actionable transformation commands. Never include vague fluff. Use only ASCII hyphen "-" (never Unicode dashes). Spend slots on real behavioral rules (structure, tone, ask shape, what not to pitch)—not meta instructions.
-5. PUNCTUATION VS STRUCTURE (COMPILER-ONLY — FOLLOW SILENTLY): Do not invent punctuation rules that contradict the playbook structure. If the output includes a question (binary ask, closing question, etc.), never require every sentence to end with a period—describe sentence roles instead (e.g. "exactly two sentences: a declarative observation followed by a single binary question"). Leave terminal . vs ? to formatting_rules.punctuation and normal English. Do NOT quote this rule into system_directives; apply it while writing other directives so the third domain slot stays free for real behavioral rules (e.g. exclude product pitch or calendar link).
-6. ASR CLEANUP (REQUIRED): Always include directives that (a) strip ASR filler words, hesitations, and false starts, and (b) resolve spoken self-corrections in favor of the speaker's final correction (e.g. "20—actually 25", "Tuesday — no wait, Thursday"). Use ASCII hyphens in those directives.
+4. IMPERATIVE DIRECTIVES: Write 'system_directives' as 3 to 5 strict, actionable transformation commands. Never include vague fluff. Spend slots on real behavioral rules (structure, tone, ask shape, what not to pitch)—not meta instructions. Every directive must govern end-user message content or tone—never include compiler formatting rules (ASCII/Unicode character rules, hyphen/dash policy, or punctuation meta-rules) in the output.
+5. PUNCTUATION VS STRUCTURE (COMPILER-ONLY — FOLLOW SILENTLY): Do not invent punctuation rules that contradict the playbook structure. If the output includes a question (binary ask, closing question, etc.), never require every sentence to end with a period—describe sentence roles instead (e.g. "exactly two sentences: a declarative observation followed by a single binary question"). Leave terminal . vs ? to formatting_rules.punctuation and normal English. Do NOT quote this rule into system_directives. When writing directive text yourself, use only ASCII hyphen "-".
+6. ASR CLEANUP (REQUIRED): Always include directives that (a) strip ASR filler words, hesitations, and false starts, and (b) resolve spoken self-corrections in favor of the speaker's final correction (e.g. "20—actually 25", "Tuesday — no wait, Thursday").
 7. BANNED PHRASES: Merge Tier 1 hedges/forbidden phrases with Tier 3 banned_phrases into a single list. Do not invent unrelated bans. Do NOT generate a system_directive telling the model to check or remove banned_phrases—that list is enforced separately at runtime (e.g. never write "Remove any phrases that appear in the banned_phrases list.").
-8. max_sentences: Use the Tier 2 max_sentences when present. Use 0 when there is no hard sentence cap.
+8. max_sentences: Prefer Tier 2 max_sentences when present. If the playbook name or directive specifies an exact count (e.g. "two-sentence", "2-Sentence", "exactly two sentences"), set max_sentences to that positive integer. Map length ultra_brief to 2 and brief/tighten to 4. For open-ended playbooks with no fixed sentence count (meeting summaries, long-form proposals, etc.), set max_sentences to null — never use 0.
 """.strip()
 
 COMPILED_STYLE_SCHEMA: Dict[str, Any] = {
@@ -76,8 +76,8 @@ COMPILED_STYLE_SCHEMA: Dict[str, Any] = {
                     "Must include stripping fillers/hesitations/false starts and resolving spoken "
                     "self-corrections in favor of the speaker's final correction. "
                     "Do not include a meta rule about checking banned_phrases—that is enforced separately. "
-                    "Follow punctuation-vs-structure silently—never quote a meta rule about not forcing "
-                    "periods on questions into this array. Use ASCII hyphens only."
+                    "Every item must govern end-user message content or tone—never compiler formatting "
+                    "(ASCII/Unicode, hyphen policy, punctuation meta-rules)."
                 ),
             },
             "banned_phrases": {
@@ -102,7 +102,13 @@ COMPILED_STYLE_SCHEMA: Dict[str, Any] = {
                         "type": "string",
                         "enum": ["single_paragraph", "short_paragraphs", "bullet_list"],
                     },
-                    "max_sentences": {"type": "integer"},
+                    "max_sentences": {
+                        "type": ["integer", "null"],
+                        "description": (
+                            "Hard sentence cap when the playbook is sentence-locked; "
+                            "null when there is no fixed sentence count."
+                        ),
+                    },
                 },
             },
             "few_shot_anchor": {
@@ -174,8 +180,69 @@ def _map_layout(raw: Any) -> str:
     return "short_paragraphs"
 
 
-def _map_max_sentences(tuner_length: Optional[str], subcategory: Dict[str, Any]) -> int:
+# Unicode dashes → ASCII hyphen so LLM "self‑correction" (U+2011) matches tokens.
+_DASH_TO_ASCII = str.maketrans({
+    "\u2010": "-",  # hyphen
+    "\u2011": "-",  # non-breaking hyphen
+    "\u2012": "-",  # figure dash
+    "\u2013": "-",  # en dash
+    "\u2014": "-",  # em dash
+    "\u2015": "-",  # horizontal bar
+    "\u2212": "-",  # minus sign
+})
+_WORD_COUNTS = {
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+}
+
+
+def _infer_max_sentences_from_text(*parts: str) -> int:
+    """
+    Infer a hard sentence cap from playbook title/directive text.
+    Save/compile only — scans short strings for 'two-sentence', 'exactly 2 sentences', etc.
+    """
+    blob = " ".join(str(p) for p in parts if p).lower().translate(_DASH_TO_ASCII)
+    if not blob:
+        return 0
+    # Highest confidence first.
+    for word, value in _WORD_COUNTS.items():
+        if f"exactly {word} sentences" in blob or f"exactly {value} sentences" in blob:
+            return value
+        if f"exactly {word} sentence" in blob or f"exactly {value} sentence" in blob:
+            return value
+    for word, value in _WORD_COUNTS.items():
+        if f"{word}-sentence" in blob or f"{value}-sentence" in blob:
+            return value
+        if f"{word} sentences" in blob or f"{value} sentences" in blob:
+            return value
+        if f"{word} sentence" in blob or f"{value} sentence" in blob:
+            return value
+    return 0
+
+
+def _map_max_sentences(
+    tuner_length: Optional[str],
+    subcategory: Dict[str, Any],
+    *text_hints: str,
+) -> Optional[int]:
+    """
+    Positive hard cap when sentence-locked; None for open-ended playbooks.
+    Never returns 0 — uncapped is null so runtimes do not see max_sentences=0.
+    """
     length = str(tuner_length or "").strip().lower()
+    if not length:
+        length = str(
+            subcategory.get("length")
+            or subcategory.get("compression")
+            or ""
+        ).strip().lower()
     if length in ("ultra_brief", "ultra-brief"):
         return 2
     if length in ("tighten_30", "tighten", "brief"):
@@ -186,7 +253,19 @@ def _map_max_sentences(tuner_length: Optional[str], subcategory: Dict[str, Any])
             return from_sub
     except (TypeError, ValueError):
         pass
-    return 0
+    inferred = _infer_max_sentences_from_text(*text_hints)
+    return inferred if inferred > 0 else None
+
+
+def _normalize_max_sentences(value: Any) -> Optional[int]:
+    """Coerce raw formatting max_sentences; 0/missing/invalid -> None (uncapped)."""
+    if value is None:
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
 
 
 # High-signal substring tokens only — no regex. Save/compile path; ≤5 short lines.
@@ -216,16 +295,6 @@ _SELF_CORRECTION_TOKENS = (
     "scratch that",
     "backtrack",
 )
-# Unicode dashes → ASCII hyphen so LLM "self‑correction" (U+2011) matches tokens.
-_DASH_TO_ASCII = str.maketrans({
-    "\u2010": "-",  # hyphen
-    "\u2011": "-",  # non-breaking hyphen
-    "\u2012": "-",  # figure dash
-    "\u2013": "-",  # en dash
-    "\u2014": "-",  # em dash
-    "\u2015": "-",  # horizontal bar
-    "\u2212": "-",  # minus sign
-})
 _FACTS_PAD = "Preserve the speaker's facts, names, dates, and numbers."
 _FACTS_PAD_LOW = _FACTS_PAD.lower()
 
@@ -256,6 +325,17 @@ def _is_punctuation_structure_meta(low: str) -> bool:
     if "period on a question" in low or "periods on a question" in low:
         return True
     return "punctuation" in low and "contradict" in low
+
+
+def _is_compiler_formatting_meta(low: str) -> bool:
+    """Drop compiler-only formatting rules that must not burn runtime directive slots."""
+    if _is_punctuation_structure_meta(low):
+        return True
+    if "ascii" in low and any(tok in low for tok in ("hyphen", "dash", "unicode", "character")):
+        return True
+    if "unicode" in low and any(tok in low for tok in ("hyphen", "dash", "ascii")):
+        return True
+    return "only ascii" in low
 
 
 def _directive_covers_filler(low: str) -> bool:
@@ -295,7 +375,7 @@ def _ensure_asr_cleanup_directives(directives: List[str], *, min_count: int = 3)
             key in seen_exact
             or _is_generic_filler_pad(key)
             or _is_banned_phrases_meta(key)
-            or _is_punctuation_structure_meta(key)
+            or _is_compiler_formatting_meta(key)
         ):
             continue
         seen_exact.add(key)
@@ -354,7 +434,14 @@ def _deterministic_compile(input_data: StyleCompilationInput) -> Dict[str, Any]:
     spoken = str(few.get("raw_asr") or "").strip() or f"um so basically {ideal}"
 
     layout = _map_layout(tuners.get("layout") or subcategory.get("default_layout"))
-    max_sentences = _map_max_sentences(tuners.get("length"), subcategory)
+    max_sentences = _map_max_sentences(
+        tuners.get("length"),
+        subcategory,
+        input_data.style_name,
+        directive,
+        str(playbook.get("display_name") or ""),
+        objective,
+    )
     casing = "lowercase_all" if str(category.get("grammar_strictness") or "").lower() == "low" and "personal" in str(category.get("domain") or "").lower() else "standard"
     if str(subcategory.get("casing") or "").lower() in ("standard", "lowercase_all"):
         casing = str(subcategory.get("casing")).lower()
@@ -410,12 +497,22 @@ def _post_validate(raw: Dict[str, Any], input_data: StyleCompilationInput) -> Di
     layout = formatting.get("layout")
     if layout not in ("single_paragraph", "short_paragraphs", "bullet_list"):
         layout = "short_paragraphs"
-    try:
-        max_sentences = int(formatting.get("max_sentences", 0))
-    except (TypeError, ValueError):
-        max_sentences = 0
-    if max_sentences < 0:
-        max_sentences = 0
+    max_sentences = _normalize_max_sentences(formatting.get("max_sentences"))
+    if max_sentences is None:
+        tuners = (
+            input_data.tuner_overrides.model_dump(exclude_none=True)
+            if input_data.tuner_overrides
+            else {}
+        )
+        max_sentences = _map_max_sentences(
+            tuners.get("length"),
+            input_data.subcategory_data or {},
+            input_data.style_name,
+            str((input_data.playbook_data or {}).get("directive") or ""),
+            str((input_data.playbook_data or {}).get("display_name") or ""),
+            objective,
+            *directives[:3],
+        )
 
     few = raw.get("few_shot_anchor") or {}
     spoken = str(few.get("spoken_input") or "").strip()
@@ -645,6 +742,14 @@ def build_live_dictation_system_prompt(contract: Dict[str, Any]) -> str:
     if room_assets:
         extras.append(room_assets)
     extras_block = ("\n" + "\n".join(extras)) if extras else ""
+    max_sentences = _normalize_max_sentences(formatting.get("max_sentences"))
+    formatting_line = (
+        f"Casing={formatting.get('casing')}, "
+        f"Punctuation={formatting.get('punctuation')}, "
+        f"Layout={formatting.get('layout')}"
+    )
+    if max_sentences is not None:
+        formatting_line += f", MaxSentences={max_sentences}"
 
     return f"""
 You are a real-time dictation processor. Transform raw Speech-to-Text (ASR) into a ready-to-send message.
@@ -660,7 +765,7 @@ STYLE CONTRACT:
 - Rules:
 {rules_block}
 - Banned Phrases (never output): {json.dumps(banned, ensure_ascii=False)}
-- Formatting: Casing={formatting.get("casing")}, Punctuation={formatting.get("punctuation")}, Layout={formatting.get("layout")}, MaxSentences={formatting.get("max_sentences")}{extras_block}
+- Formatting: {formatting_line}{extras_block}
 
 GOLDEN EXAMPLE:
 Raw ASR: "{few.get("spoken_input") or ""}"

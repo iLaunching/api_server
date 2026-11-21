@@ -44,7 +44,7 @@ COMPILATION RULES:
    - If 'userSampleText' is provided, set 'few_shot_anchor.ideal_output' to a cleaned version of that sample, and reverse-engineer a realistic messy spoken voice note ('spoken_input' with natural hesitations like "um" or a quick backtrack) that captures the exact same facts.
    - If no 'userSampleText' is provided, refine the Tier 3 playbook's default example so it reflects any tuner overrides. If the playbook already includes a few_shot, preserve its facts and polish the pair.
 4. IMPERATIVE DIRECTIVES: Write 'system_directives' as 3 to 5 strict, actionable transformation commands. Never include vague fluff. Use only ASCII hyphen "-" (never Unicode dashes). Spend slots on real behavioral rules (structure, tone, ask shape, what not to pitch)—not meta instructions.
-5. PUNCTUATION VS STRUCTURE: Do not invent punctuation rules that contradict the playbook structure. If the output includes a question (binary ask, closing question, etc.), never require every sentence to end with a period—describe sentence roles instead (e.g. "exactly two sentences: a declarative observation followed by a single binary question"). Leave terminal . vs ? to formatting_rules.punctuation and normal English.
+5. PUNCTUATION VS STRUCTURE (COMPILER-ONLY — FOLLOW SILENTLY): Do not invent punctuation rules that contradict the playbook structure. If the output includes a question (binary ask, closing question, etc.), never require every sentence to end with a period—describe sentence roles instead (e.g. "exactly two sentences: a declarative observation followed by a single binary question"). Leave terminal . vs ? to formatting_rules.punctuation and normal English. Do NOT quote this rule into system_directives; apply it while writing other directives so the third domain slot stays free for real behavioral rules (e.g. exclude product pitch or calendar link).
 6. ASR CLEANUP (REQUIRED): Always include directives that (a) strip ASR filler words, hesitations, and false starts, and (b) resolve spoken self-corrections in favor of the speaker's final correction (e.g. "20—actually 25", "Tuesday — no wait, Thursday"). Use ASCII hyphens in those directives.
 7. BANNED PHRASES: Merge Tier 1 hedges/forbidden phrases with Tier 3 banned_phrases into a single list. Do not invent unrelated bans. Do NOT generate a system_directive telling the model to check or remove banned_phrases—that list is enforced separately at runtime (e.g. never write "Remove any phrases that appear in the banned_phrases list.").
 8. max_sentences: Use the Tier 2 max_sentences when present. Use 0 when there is no hard sentence cap.
@@ -76,8 +76,8 @@ COMPILED_STYLE_SCHEMA: Dict[str, Any] = {
                     "Must include stripping fillers/hesitations/false starts and resolving spoken "
                     "self-corrections in favor of the speaker's final correction. "
                     "Do not include a meta rule about checking banned_phrases—that is enforced separately. "
-                    "Do not invent punctuation that contradicts structure (never require a period on a question). "
-                    "Use ASCII hyphens only."
+                    "Follow punctuation-vs-structure silently—never quote a meta rule about not forcing "
+                    "periods on questions into this array. Use ASCII hyphens only."
                 ),
             },
             "banned_phrases": {
@@ -249,6 +249,15 @@ def _is_banned_phrases_meta(low: str) -> bool:
     )
 
 
+def _is_punctuation_structure_meta(low: str) -> bool:
+    """Drop compiler-echoed punctuation-vs-structure meta rules — follow silently."""
+    if "force a period" in low and "question" in low:
+        return True
+    if "period on a question" in low or "periods on a question" in low:
+        return True
+    return "punctuation" in low and "contradict" in low
+
+
 def _directive_covers_filler(low: str) -> bool:
     """Semantic match — catches LLM paraphrases of the filler rule."""
     return any(token in low for token in _FILLER_TOKENS)
@@ -271,8 +280,8 @@ def _ensure_asr_cleanup_directives(directives: List[str], *, min_count: int = 3)
     compile / _post_validate — never on the live finalize WebSocket path.
 
     Ordering: up to 3 playbook-specific directives first, then the 2 canonical ASR
-    rules. Unicode-dash paraphrases and banned_phrases meta-lines are dropped so
-    they cannot burn playbook slots.
+    rules. Unicode-dash paraphrases, banned_phrases meta-lines, and punctuation-
+    structure meta echoes are dropped so they cannot burn playbook slots.
     """
     playbook: List[str] = []
     seen_exact: set[str] = set()
@@ -282,7 +291,12 @@ def _ensure_asr_cleanup_directives(directives: List[str], *, min_count: int = 3)
         if not item:
             continue
         key = _normalize_directive_key(item)
-        if key in seen_exact or _is_generic_filler_pad(key) or _is_banned_phrases_meta(key):
+        if (
+            key in seen_exact
+            or _is_generic_filler_pad(key)
+            or _is_banned_phrases_meta(key)
+            or _is_punctuation_structure_meta(key)
+        ):
             continue
         seen_exact.add(key)
 

@@ -44,9 +44,10 @@ COMPILATION RULES:
    - If 'userSampleText' is provided, set 'few_shot_anchor.ideal_output' to a cleaned version of that sample, and reverse-engineer a realistic messy spoken voice note ('spoken_input' with natural hesitations like "um" or a quick backtrack) that captures the exact same facts.
    - If no 'userSampleText' is provided, refine the Tier 3 playbook's default example so it reflects any tuner overrides. If the playbook already includes a few_shot, preserve its facts and polish the pair.
 4. IMPERATIVE DIRECTIVES: Write 'system_directives' as 3 to 5 strict, actionable transformation commands. Never include vague fluff. Use only ASCII hyphen "-" (never Unicode dashes). Spend slots on real behavioral rules (structure, tone, ask shape, what not to pitch)—not meta instructions.
-5. ASR CLEANUP (REQUIRED): Always include directives that (a) strip ASR filler words, hesitations, and false starts, and (b) resolve spoken self-corrections in favor of the speaker's final correction (e.g. "20—actually 25", "Tuesday — no wait, Thursday"). Use ASCII hyphens in those directives.
-6. BANNED PHRASES: Merge Tier 1 hedges/forbidden phrases with Tier 3 banned_phrases into a single list. Do not invent unrelated bans. Do NOT generate a system_directive telling the model to check or remove banned_phrases—that list is enforced separately at runtime (e.g. never write "Remove any phrases that appear in the banned_phrases list.").
-7. max_sentences: Use the Tier 2 max_sentences when present. Use 0 when there is no hard sentence cap.
+5. PUNCTUATION VS STRUCTURE: Do not invent punctuation rules that contradict the playbook structure. If the output includes a question (binary ask, closing question, etc.), never require every sentence to end with a period—describe sentence roles instead (e.g. "exactly two sentences: a declarative observation followed by a single binary question"). Leave terminal . vs ? to formatting_rules.punctuation and normal English.
+6. ASR CLEANUP (REQUIRED): Always include directives that (a) strip ASR filler words, hesitations, and false starts, and (b) resolve spoken self-corrections in favor of the speaker's final correction (e.g. "20—actually 25", "Tuesday — no wait, Thursday"). Use ASCII hyphens in those directives.
+7. BANNED PHRASES: Merge Tier 1 hedges/forbidden phrases with Tier 3 banned_phrases into a single list. Do not invent unrelated bans. Do NOT generate a system_directive telling the model to check or remove banned_phrases—that list is enforced separately at runtime (e.g. never write "Remove any phrases that appear in the banned_phrases list.").
+8. max_sentences: Use the Tier 2 max_sentences when present. Use 0 when there is no hard sentence cap.
 """.strip()
 
 COMPILED_STYLE_SCHEMA: Dict[str, Any] = {
@@ -75,6 +76,7 @@ COMPILED_STYLE_SCHEMA: Dict[str, Any] = {
                     "Must include stripping fillers/hesitations/false starts and resolving spoken "
                     "self-corrections in favor of the speaker's final correction. "
                     "Do not include a meta rule about checking banned_phrases—that is enforced separately. "
+                    "Do not invent punctuation that contradicts structure (never require a period on a question). "
                     "Use ASCII hyphens only."
                 ),
             },
